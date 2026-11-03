@@ -2,8 +2,8 @@
  * `news-da-semana` — the week's news as a carousel of 1080×1350 slides.
  *
  * Every slide is the same page: on the left the logo, the words "News da semana" and a line
- * that introduces the list; on the right the slide's news, one `**Label:** words` after the
- * other, centred on the page's height. One `::lamina` is one slide.
+ * that introduces the list; on the right the slide's news, one `Label: words` after the other,
+ * centred on the page's height. One `::lamina` is one slide.
  *
  * Every position is the reference art's (the maintainer's PSD), in the slide's pixels: a text
  * is placed by the top of its capitals, as the reference's layer bounds give it. The logo is
@@ -22,7 +22,15 @@ import {
   vector,
 } from '@tyto/core/template';
 import { drawLogo, sealOf } from '@tyto/house-style';
-import { at, lines, plain, reportOverflow, sealed } from '@tyto/template-kit';
+import {
+  at,
+  keepTogether,
+  labelOf,
+  lines,
+  plain,
+  reportOverflow,
+  sealed,
+} from '@tyto/template-kit';
 
 import type { RichText, TemplateBuild, TemplateContext, TextRun } from '@tyto/core';
 import type { NodeDraft, TextDraft } from '@tyto/core/template';
@@ -52,7 +60,7 @@ export const COLOR_DEFAULTS = {
   paper: '#ffffff',
   /** "News da semana" in large. */
   'title-ink': '#4d02a1',
-  /** A news item's label, its `**bold**` words. */
+  /** A news item's label, what comes before its first `:`, and its `**highlighted**` words. */
   'label-ink': '#460292',
   /** A news item's other words. */
   'body-ink': '#646464',
@@ -230,20 +238,31 @@ function arrow(color: string): NodeDraft {
 /* ---------------------------------------------------------------------------- the news -- */
 
 /**
- * The slide's news as one text: each written line a line, `**bold**` in the label's colour and
- * the rest Light, centred on the reference's middle and reported when it overruns its room.
+ * The slide's news as one text: each written line a line, its label — what comes before its
+ * first `:`, the house convention (TYTO-594) — Bold in the label's colour and the rest Light,
+ * centred on the reference's middle and reported when it overruns its room.
+ *
+ * `**…**` is the house's highlight wherever it is written, Bold in the label's colour as well:
+ * so a line written the v0.2.0 way, `**Label:** words`, draws what it drew then. A price never
+ * splits from its sign or its scale word (TYTO-593): "R$ 9,8 mil" keeps one line.
  */
 function news(context: TemplateContext, ink: Ink, lift: number): NodeDraft {
   const written = slideRichLines(context);
   const body = { font: FACE, size: NEWS.size, weight: LIGHT, color: ink('body-ink') };
-  const runs = written.flatMap((line, index) => [
-    ...(index > 0 ? [lineBreak()] : []),
-    ...runsOf(line, body, { bold: BOLD }).map((item) =>
-      item.kind === 'text' && item.weight === BOLD
-        ? { ...item, color: solid(ink('label-ink')) }
-        : item,
-    ),
-  ]);
+  const runs = written.flatMap((line, index) => {
+    const { label, text } = labelOf(keepTogether(line));
+    return [
+      ...(index > 0 ? [lineBreak()] : []),
+      ...[
+        ...(label === undefined ? [] : runsOf(label, { ...body, weight: BOLD }, { bold: BOLD })),
+        ...runsOf(text, body, { bold: BOLD }),
+      ].map((item) =>
+        item.kind === 'text' && item.weight === BOLD
+          ? { ...item, color: solid(ink('label-ink')) }
+          : item,
+      ),
+    ];
+  });
   const box = { x: NEWS.x, size: NEWS.size, lineHeight: NEWS.lineHeight, width: NEWS.width };
   const draft = textRuns('noticias', runs, { ...box, capTop: 0 });
   const count = lineCount(context, draft, written, NEWS.size, NEWS.width);

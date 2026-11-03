@@ -21818,7 +21818,7 @@ function frame(options) {
   };
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
 var PAPER = "#fbfbfb";
 var INK = "#000000";
 var ZEBRA = "#f2f2f4";
@@ -21855,7 +21855,7 @@ var BODY = {
 };
 var OPTICAL_DROP = 0.15;
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.8.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.9.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
 function shifted(draft, dx, dy) {
   const transform2 = {
     ...draft.transform,
@@ -21880,6 +21880,137 @@ function block(width, height, draft) {
 }
 function at(x, y, item) {
   return shifted(item.draft, x, y);
+}
+var NO_BREAK_SPACE = "\xA0";
+var NUMBER = String.raw`\d[\d.,]*`;
+var KEEP_TOGETHER_RULES = [
+  { name: "currency sign + amount", before: String.raw`(?:R\$|US\$|€)`, after: String.raw`\d` },
+  {
+    name: "amount + scale word",
+    before: NUMBER,
+    after: String.raw`(?:mil|milhão|milhões|bi|bilhão|bilhões)(?!\p{L})`
+  },
+  { name: "number + percent", before: NUMBER, after: "%" }
+];
+function keepTogetherText(text2, rules2 = KEEP_TOGETHER_RULES) {
+  return rules2.reduce(
+    (glued, rule) => glued.replace(
+      new RegExp(`(?<=${rule.before})( +)(?=${rule.after})`, "gu"),
+      (spaces) => NO_BREAK_SPACE.repeat(spaces.length)
+    ),
+    text2
+  );
+}
+function keepTogether(value, rules2 = KEEP_TOGETHER_RULES) {
+  const glued = keepTogetherText(flatten(value), rules2);
+  let offset = 0;
+  const rewrite = (inlines) => inlines.map((inline) => {
+    switch (inline.kind) {
+      case "text": {
+        const start = offset;
+        offset += inline.value.length;
+        return { ...inline, value: glued.slice(start, offset) };
+      }
+      case "break":
+        offset += 1;
+        return inline;
+      default:
+        return { ...inline, children: rewrite(inline.children) };
+    }
+  });
+  return rewrite(value);
+}
+function flatten(value) {
+  return value.map((inline) => {
+    switch (inline.kind) {
+      case "text":
+        return inline.value;
+      case "break":
+        return "\n";
+      default:
+        return flatten(inline.children);
+    }
+  }).join("");
+}
+var LONGEST_LABEL = 40;
+var LABEL_EXCEPTIONS = [
+  { name: "a time", pattern: String.raw`\d{1,2}:\d{2}` },
+  { name: "a URL", pattern: String.raw`\p{L}[\p{L}\d+.-]*://\S*` }
+];
+function separatorAt(line, options) {
+  const separator = options.separator ?? ":";
+  if (separator === "") return void 0;
+  const covered = (options.notLabels ?? LABEL_EXCEPTIONS).flatMap(
+    (exception) => [...line.matchAll(new RegExp(exception.pattern, "gu"))].map((match) => ({
+      start: match.index,
+      end: match.index + match[0].length
+    }))
+  );
+  let at2 = line.indexOf(separator);
+  while (at2 >= 0 && covered.some((span) => span.start <= at2 && at2 < span.end)) {
+    at2 = line.indexOf(separator, at2 + 1);
+  }
+  if (at2 < 0) return void 0;
+  const label = line.slice(0, at2);
+  if (label.includes("\n") || label.trim() === "") return void 0;
+  if ([...label.trim()].length > (options.longestLabel ?? LONGEST_LABEL)) return void 0;
+  return at2;
+}
+function labelOf(line, options = {}) {
+  const at2 = separatorAt(flatten2(line), options);
+  if (at2 === void 0) return { label: void 0, text: line };
+  const end = at2 + (options.separator ?? ":").length;
+  return {
+    label: cut(line, 0, options.keepSeparator === false ? at2 : end),
+    text: cut(line, end, Infinity)
+  };
+}
+function cut(value, start, end) {
+  let offset = 0;
+  const within = (inlines) => inlines.flatMap((inline) => {
+    switch (inline.kind) {
+      case "text": {
+        const from = offset;
+        offset += inline.value.length;
+        const kept = inline.value.slice(Math.max(start - from, 0), Math.max(end - from, 0));
+        if (kept === "") return [];
+        const shift2 = Math.max(start - from, 0);
+        const rangeStart = Math.min(inline.range.start + shift2, inline.range.end);
+        return [
+          {
+            ...inline,
+            value: kept,
+            range: {
+              start: rangeStart,
+              end: Math.min(rangeStart + kept.length, inline.range.end)
+            }
+          }
+        ];
+      }
+      case "break": {
+        const from = offset;
+        offset += 1;
+        return start <= from && from < end ? [inline] : [];
+      }
+      default: {
+        const children = within(inline.children);
+        return children.length === 0 ? [] : [{ ...inline, children }];
+      }
+    }
+  });
+  return within(value);
+}
+function flatten2(value) {
+  return value.map((inline) => {
+    switch (inline.kind) {
+      case "text":
+        return inline.value;
+      case "break":
+        return "\n";
+      default:
+        return flatten2(inline.children);
+    }
+  }).join("");
 }
 function mark(shape, height, fill, name) {
   const scale = height / shape.box.h;
@@ -21936,7 +22067,7 @@ function plain(text2) {
   }).join("");
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
 var PLACEHOLDER_LOGO = {
   box: { w: 186.09, h: 376.79 },
   d: (
@@ -21969,7 +22100,7 @@ function drawLogo(kit, height, inks) {
   return drawBrandMark(kit.logo ?? PLACEHOLDER_LOGO, height, inks, "logo");
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
 var TITLE_INK = "#7c7c7c";
 var ROW_INK = "#393939";
 var FACE = systemFont("CircularXX");
@@ -22011,7 +22142,7 @@ function sealOf(context) {
   const value = context.slots["selo"]?.value;
   return value?.kind === "image" ? { asset: value.asset, height: SEAL_HEIGHT } : void 0;
 }
-var NUMBER = String.raw`\d[\d.,]*`;
+var NUMBER2 = String.raw`\d[\d.,]*`;
 var TABLE_VALUE_DEFAULTS = {
   "title-gap": TITLE.gap,
   "title-floor": TITLE.floor,
@@ -22038,7 +22169,7 @@ var COLOR_DEFAULTS = {
   paper: "#ffffff",
   /** "News da semana" in large. */
   "title-ink": "#4d02a1",
-  /** A news item's label, its `**bold**` words. */
+  /** A news item's label, what comes before its first `:`, and its `**highlighted**` words. */
   "label-ink": "#460292",
   /** A news item's other words. */
   "body-ink": "#646464",
@@ -22183,12 +22314,18 @@ function arrow(color2) {
 function news(context, ink, lift) {
   const written = slideRichLines(context);
   const body = { font: FACE2, size: NEWS.size, weight: LIGHT, color: ink("body-ink") };
-  const runs = written.flatMap((line, index) => [
-    ...index > 0 ? [lineBreak()] : [],
-    ...runsOf(line, body, { bold: BOLD3 }).map(
-      (item) => item.kind === "text" && item.weight === BOLD3 ? { ...item, color: solid(ink("label-ink")) } : item
-    )
-  ]);
+  const runs = written.flatMap((line, index) => {
+    const { label, text: text2 } = labelOf(keepTogether(line));
+    return [
+      ...index > 0 ? [lineBreak()] : [],
+      ...[
+        ...label === void 0 ? [] : runsOf(label, { ...body, weight: BOLD3 }, { bold: BOLD3 }),
+        ...runsOf(text2, body, { bold: BOLD3 })
+      ].map(
+        (item) => item.kind === "text" && item.weight === BOLD3 ? { ...item, color: solid(ink("label-ink")) } : item
+      )
+    ];
+  });
   const box = { x: NEWS.x, size: NEWS.size, lineHeight: NEWS.lineHeight, width: NEWS.width };
   const draft = textRuns("noticias", runs, { ...box, capTop: 0 });
   const count = lineCount(context, draft, written, NEWS.size, NEWS.width);

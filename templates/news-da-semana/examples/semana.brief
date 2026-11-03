@@ -1,0 +1,28 @@
+---
+template: news-da-semana
+formats: [grid]
+---
+// Two slides of news in invented copy: invented bodies, exam boards and numbers.
+
+::lamina
+  **QCX Norte:**
+  edital publicado com 320 vagas e inicial de R$ 9,8 mil
+  **TRZ 2:**
+  edital publicado com iniciais de até R$ 16 mil
+  **Fazex QC:**
+  banca definida para o concurso de Analista
+  **PM Vale Alto:**
+  edital publicado com 450 vagas para Soldado
+  **IPX QC:**
+  saiu edital com vagas para Pesquisador
+  **Corex:**
+  previsão de edital com 200 vagas em 2027
+
+::lamina
+  **Bombeiro XY:**
+  comissão formada para o próximo edital
+  **MP Vale Alto:**
+  comissões formadas para novo concurso
+  **SEQ QC:** contrato com a Quintex avança a organização do certame
+  **Cetrix:** Ômegas é a banca para seleção com 107 vagas
+  **Processo seletivo QC Regula:** autorizadas 90 vagas temporárias

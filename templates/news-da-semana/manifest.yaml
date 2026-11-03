@@ -1,5 +1,5 @@
 name: news-da-semana
-version: 0.1.0
+version: 0.2.0
 brand: roxo
 description: The week's news as a 1080×1350 carousel — "News da semana" and the logo on the left, the slide's news on the right, one bold label and its words after the other.
 # Every face the slides set is declared, so the plugin's process can measure them (Tyto ADR 0048).
@@ -16,6 +16,9 @@ slots:
   # The line under "News da semana". Optional: without it the template draws the reference's.
   # A line break in the brief is a line break on the slide.
   subtitulo: { type: rich-text, max: 80 }
+  # The house's seal art, 1080 × 140, glued to the foot of the last slide (TYTO-201): the
+  # bottom corner rises by it. In the frontmatter: `selo: ./selo.png`.
+  selo: { type: image }
   # One slide each, its news one after the other: `**Label:** words`, the label in bold. A line
   # break in the brief is a line break on the slide, so `**Label:**` on a line of its own puts
   # the words under it. `max` counts slides.

@@ -21762,6 +21762,17 @@ function text(options) {
     ...options.id !== void 0 ? { id: options.id } : {}
   };
 }
+function image(options) {
+  return {
+    ...base(options),
+    kind: "image",
+    asset: options.asset,
+    size: options.size,
+    fit: options.fit ?? "cover",
+    position: options.position ?? { x: 0.5, y: 0.5 },
+    ...options.id !== void 0 ? { id: options.id } : {}
+  };
+}
 function vector(options) {
   return {
     ...base(options),
@@ -21884,6 +21895,16 @@ function mark(shape, height, fill, name) {
     })
   );
 }
+function sealed(size, seal) {
+  if (seal === void 0) return { size, seal: [] };
+  const band = { w: size.w, h: seal.height };
+  const art = block(
+    band.w,
+    band.h,
+    image({ name: "seal", asset: seal.asset, size: band, fit: "cover" })
+  );
+  return { size: { w: size.w, h: size.h - seal.height }, seal: [at(0, size.h - seal.height, art)] };
+}
 function reportOverflow(report, bottom, limit) {
   const overflow = bottom - limit;
   if (overflow > 0) report({ code: "W_TEMPLATE_OVERFLOW", overflow });
@@ -21983,6 +22004,13 @@ var style = (size, weight, color2) => ({
 var EXAM_STYLE = style(TYPE.exam, BOOK, ROW_INK);
 var TITLE_STYLE = style(TYPE.title, BOLD2, TITLE_INK);
 var TITLE_LINE = Math.round(TYPE.title * TITLE2.lineHeight);
+var SEAL_HEIGHT = 140;
+function sealOf(context) {
+  if (context.format !== "grid") return void 0;
+  if (context.artwork.index !== context.artwork.count - 1) return void 0;
+  const value = context.slots["selo"]?.value;
+  return value?.kind === "image" ? { asset: value.asset, height: SEAL_HEIGHT } : void 0;
+}
 var NUMBER = String.raw`\d[\d.,]*`;
 var TABLE_VALUE_DEFAULTS = {
   "title-gap": TITLE.gap,
@@ -22052,6 +22080,8 @@ var NEWS = {
 };
 var build = (context) => {
   const ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
+  const page = sealed(context.size, sealOf(context));
+  const lift = context.size.h - page.size.h;
   return frame({
     format: context.format,
     size: context.size,
@@ -22086,16 +22116,17 @@ var build = (context) => {
         lineHeight: 36.5 / 30,
         width: 300
       }),
-      news(context, ink),
+      news(context, ink, lift),
       at(
         113,
         353,
         drawLogo(context.brand, 88, { primary: ink("logo"), secondary: ink("logo-shade") })
       ),
       ...rules(ink("rule-ink")),
-      ...corners(ink("corner-ink")),
+      ...corners(ink("corner-ink"), lift),
       squares(ink("subtitle-ink")),
-      ...context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink("title-ink"))]
+      ...context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink("title-ink"))],
+      ...page.seal
     ]
   });
 };
@@ -22109,7 +22140,7 @@ function rules(color2) {
   });
   return [diagonal("diagonal-logo", 44, 445, 54), diagonal("diagonal-titulo", 354, 765, 60)];
 }
-function corners(color2) {
+function corners(color2, lift) {
   const corner = (name, x, y, d) => vector({
     name,
     geometry: { kind: "path", d, fillRule: "nonzero" },
@@ -22119,7 +22150,7 @@ function corners(color2) {
   });
   return [
     corner("canto-superior", 112, 135, "M0 0H14V4H4V14H0Z"),
-    corner("canto-inferior", 955, 1201, "M10 0H14V14H0V10H10Z")
+    corner("canto-inferior", 955, 1201 - lift, "M10 0H14V14H0V10H10Z")
   ];
 }
 function squares(color2) {
@@ -22149,7 +22180,7 @@ function arrow(color2) {
     transform: { x: box.x, y: box.y }
   });
 }
-function news(context, ink) {
+function news(context, ink, lift) {
   const written = slideRichLines(context);
   const body = { font: FACE2, size: NEWS.size, weight: LIGHT, color: ink("body-ink") };
   const runs = written.flatMap((line, index) => [
@@ -22164,7 +22195,7 @@ function news(context, ink) {
   const pitch = NEWS.size * NEWS.lineHeight;
   const height = (count - 1) * pitch + NEWS.size * CAP_HEIGHT;
   const capTop = Math.max(NEWS.top, NEWS.centre - height / 2);
-  reportOverflow(context.report, capTop + height, NEWS.bottom);
+  reportOverflow(context.report, capTop + height, NEWS.bottom - lift);
   return textRuns("noticias", runs, { ...box, capTop });
 }
 function textAt(name, words, placed) {

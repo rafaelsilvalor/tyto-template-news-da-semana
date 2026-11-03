@@ -34,7 +34,8 @@ formats: [grid]
   **Another label:** the news beside it
 ```
 
-One `::lamina` is one slide. A line break in the brief is a line break on the slide.
+One `::lamina` is one slide. A line break in the brief is a line break on the slide. The
+house's seal, `selo: ./selo.png` in the frontmatter, is glued to the last slide's foot.
 
 ## What it may reach
 

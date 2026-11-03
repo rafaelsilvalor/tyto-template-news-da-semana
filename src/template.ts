@@ -21,8 +21,8 @@ import {
   text,
   vector,
 } from '@tyto/core/template';
-import { drawLogo } from '@tyto/house-style';
-import { at, lines, plain, reportOverflow } from '@tyto/template-kit';
+import { drawLogo, sealOf } from '@tyto/house-style';
+import { at, lines, plain, reportOverflow, sealed } from '@tyto/template-kit';
 
 import type { RichText, TemplateBuild, TemplateContext, TextRun } from '@tyto/core';
 import type { NodeDraft, TextDraft } from '@tyto/core/template';
@@ -112,6 +112,10 @@ export const NEWS = {
 
 export const build: TemplateBuild = (context: TemplateContext) => {
   const ink: Ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
+  // The house's seal, the brief's `selo`, glued to the last slide's foot (TYTO-201): the
+  // bottom corner and the list's room rise by its band.
+  const page = sealed(context.size, sealOf(context));
+  const lift = context.size.h - page.size.h;
   return frame({
     format: context.format,
     size: context.size,
@@ -146,16 +150,17 @@ export const build: TemplateBuild = (context: TemplateContext) => {
         lineHeight: 36.5 / 30,
         width: 300,
       }),
-      news(context, ink),
+      news(context, ink, lift),
       at(
         113,
         353,
         drawLogo(context.brand, 88, { primary: ink('logo'), secondary: ink('logo-shade') }),
       ),
       ...rules(ink('rule-ink')),
-      ...corners(ink('corner-ink')),
+      ...corners(ink('corner-ink'), lift),
       squares(ink('subtitle-ink')),
       ...(context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink('title-ink'))]),
+      ...page.seal,
     ],
   });
 };
@@ -176,7 +181,7 @@ function rules(color: string): NodeDraft[] {
 }
 
 /** The page's corner marks: top left under the top line, bottom right over the arrow. */
-function corners(color: string): NodeDraft[] {
+function corners(color: string, lift: number): NodeDraft[] {
   const corner = (name: string, x: number, y: number, d: string): NodeDraft =>
     vector({
       name,
@@ -187,7 +192,7 @@ function corners(color: string): NodeDraft[] {
     });
   return [
     corner('canto-superior', 112, 135, 'M0 0H14V4H4V14H0Z'),
-    corner('canto-inferior', 955, 1201, 'M10 0H14V14H0V10H10Z'),
+    corner('canto-inferior', 955, 1201 - lift, 'M10 0H14V14H0V10H10Z'),
   ];
 }
 
@@ -228,7 +233,7 @@ function arrow(color: string): NodeDraft {
  * The slide's news as one text: each written line a line, `**bold**` in the label's colour and
  * the rest Light, centred on the reference's middle and reported when it overruns its room.
  */
-function news(context: TemplateContext, ink: Ink): NodeDraft {
+function news(context: TemplateContext, ink: Ink, lift: number): NodeDraft {
   const written = slideRichLines(context);
   const body = { font: FACE, size: NEWS.size, weight: LIGHT, color: ink('body-ink') };
   const runs = written.flatMap((line, index) => [
@@ -245,7 +250,7 @@ function news(context: TemplateContext, ink: Ink): NodeDraft {
   const pitch = NEWS.size * NEWS.lineHeight;
   const height = (count - 1) * pitch + NEWS.size * CAP_HEIGHT;
   const capTop = Math.max(NEWS.top, NEWS.centre - height / 2);
-  reportOverflow(context.report, capTop + height, NEWS.bottom);
+  reportOverflow(context.report, capTop + height, NEWS.bottom - lift);
   return textRuns('noticias', runs, { ...box, capTop });
 }
 

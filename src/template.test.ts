@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_SUBTITLE, NEWS, build } from './template.js';
 
-import type { Frame, SceneNode, TextNode } from '@tyto/core';
+import type { AssetResolver, Frame, SceneNode, TextNode } from '@tyto/core';
 
 /**
  * The carousel's rules, asserted on the scene: one slide per `::lamina`, what each slide
@@ -23,6 +23,13 @@ const template = defineTemplate(manifest.value, build);
 const formats = formatCatalogue({ grid: { w: 1080, h: 1350, kind: 'grid' } });
 const example = read('../templates/news-da-semana/examples/semana.brief');
 
+/** Any image the brief names is found; no file is read. */
+const anyImage: AssetResolver = {
+  base: '.',
+  resolve: (reference) =>
+    Promise.resolve({ id: reference, source: 'file', path: reference, hash: reference }),
+};
+
 async function compiled(brief: string) {
   const result = await compileTemplate({
     brief: brief.startsWith('---')
@@ -30,6 +37,7 @@ async function compiled(brief: string) {
       : `---\ntemplate: news-da-semana\nformats: [grid]\n---\n${brief}`,
     template,
     formats,
+    assets: anyImage,
   });
   if (!result.ok) throw new Error(result.error.map((item) => item.message).join('\n'));
   return result;
@@ -125,5 +133,21 @@ describe('news-da-semana', () => {
 
     expect(overflow(await compiled(long))).toHaveLength(1);
     expect(overflow(await compiled(example))).toHaveLength(0);
+  });
+});
+
+describe('the seal', () => {
+  const sealedBrief = example.replace('formats: [grid]\n', 'formats: [grid]\nselo: ./selo.png\n');
+
+  it("glues the brief's selo to the last slide's foot only, and lifts the bottom corner", async () => {
+    const plain = await slides();
+    const drawn = await slides(sealedBrief);
+    const seals = (slide: Frame) => nodes(slide).filter((node) => node.name === 'seal');
+    const corner = (slide: Frame) =>
+      nodes(slide).find((node) => node.name === 'canto-inferior')!.transform.y;
+
+    expect(drawn.map((slide) => seals(slide).length)).toEqual([0, 1]);
+    expect(corner(drawn[0]!)).toBe(corner(plain[0]!));
+    expect(corner(drawn[1]!)).toBe(corner(plain[1]!) - 140);
   });
 });

@@ -34,3 +34,11 @@ values:
   subtitle-ink: { type: color, default: '#8c8c8c' }
   # The small spaced words at the top.
   overline-ink: { type: color, default: '#828282' }
+  # The logo's two tones, the kit's primary and secondary, as the reference draws the owl.
+  # A logo of one shape takes the first.
+  logo: { type: color, default: '#4c2fa6' }
+  logo-shade: { type: color, default: '#7460ef' }
+  # The two thin diagonals, by the logo and under the title.
+  rule-ink: { type: color, default: '#8f8f8f' }
+  # The page's corner marks, top left and bottom right.
+  corner-ink: { type: color, default: '#585858' }

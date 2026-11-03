@@ -21598,6 +21598,9 @@ var TemplateError = class extends Error {
     this.diagnostic = built;
   }
 };
+function isTonedMark(mark2) {
+  return "layers" in mark2;
+}
 var noBrandKit = Object.freeze({});
 var HEX = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
 function expandShorthand(digits) {
@@ -21623,6 +21626,9 @@ function color(value) {
 }
 function solid(value) {
   return { kind: "solid", color: color(value) };
+}
+function systemFont(family) {
+  return { family, source: "system" };
 }
 function paintOf(value) {
   return typeof value === "object" && "kind" in value ? value : solid(value);
@@ -21680,24 +21686,24 @@ function absorbedByPrevious(target, produced, range) {
   target[target.length - 1] = merged;
   return true;
 }
-function styled(inline, style, options) {
+function styled(inline, style2, options) {
   switch (inline.kind) {
     case "bold":
-      return { ...style, weight: options.bold ?? BOLD };
+      return { ...style2, weight: options.bold ?? BOLD };
     case "italic":
-      return { ...style, style: "italic" };
+      return { ...style2, style: "italic" };
     case "mark":
-      return { ...style, ...options.mark?.(inline.key, inline.value) };
+      return { ...style2, ...options.mark?.(inline.key, inline.value) };
     default:
-      return style;
+      return style2;
   }
 }
-function append(target, text2, style, options) {
+function append(target, text2, style2, options) {
   for (const inline of text2) {
     switch (inline.kind) {
       case "text": {
         if (inline.value === "") break;
-        const produced = run(inline.value, style);
+        const produced = run(inline.value, style2);
         if (absorbedByPrevious(target, produced, inline.range)) break;
         rememberOrigin(produced, inline.range);
         target.push(produced);
@@ -21707,7 +21713,7 @@ function append(target, text2, style, options) {
         target.push({ kind: "break" });
         break;
       default:
-        append(target, inline.children, styled(inline, style, options), options);
+        append(target, inline.children, styled(inline, style2, options), options);
         break;
     }
   }
@@ -21756,6 +21762,25 @@ function text(options) {
     ...options.id !== void 0 ? { id: options.id } : {}
   };
 }
+function vector(options) {
+  return {
+    ...base(options),
+    kind: "vector",
+    geometry: options.geometry,
+    size: options.size,
+    ...options.id !== void 0 ? { id: options.id } : {},
+    ...options.fill !== void 0 ? { fill: options.fill } : {},
+    ...options.stroke !== void 0 ? { stroke: options.stroke } : {}
+  };
+}
+function group(options) {
+  return {
+    ...base(options),
+    kind: "group",
+    children: [...options.children],
+    ...options.id !== void 0 ? { id: options.id } : {}
+  };
+}
 function assignIds(drafts, prefix) {
   return drafts.map((draft, index) => {
     const id = draft.id ?? `${prefix}.${index}`;
@@ -21782,7 +21807,83 @@ function frame(options) {
   };
 }
 
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-YTKBFVV6.js
+var PAPER = "#fbfbfb";
+var INK = "#000000";
+var ZEBRA = "#f2f2f4";
+var ON_ACCENT = "#ffffff";
+var SIGNATURE_INK = "#8c8ca1";
+var TITLE = {
+  /** Line box, as a multiple of the size: tight, as display type is set. */
+  lineHeight: 1.06,
+  tracking: -0.01,
+  /** The most lines the title may take before it is set smaller. */
+  maxLines: 3,
+  /** The smallest the title is set, whatever the table needs. */
+  floor: 40,
+  ceiling: 96,
+  /**
+   * The title is never more than this many times the body size, so a short table does not
+   * sit under a shouting title. 62 over 22: the approved table art.
+   */
+  perBody: 62 / 22,
+  /** Room on each side of the title, inside the page's. */
+  inset: 20,
+  /** Title → table. */
+  gap: 20
+};
+var BODY = {
+  /** The readable floor: below it the table is drawn anyway, and reported (ADR 0058). */
+  floor: 16,
+  ceiling: 34,
+  /** The fit loop's resolution, in px. */
+  step: 0.5,
+  lineHeight: 1.25,
+  /** Padding inside a cell, in em. */
+  padding: { block: 0.8, inline: 0.5 }
+};
+var OPTICAL_DROP = 0.15;
+
 // node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.8.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+function shifted(draft, dx, dy) {
+  const transform2 = {
+    ...draft.transform,
+    x: draft.transform.x + dx,
+    y: draft.transform.y + dy
+  };
+  switch (draft.kind) {
+    case "group":
+      return { ...draft, transform: transform2 };
+    case "rect":
+      return { ...draft, transform: transform2 };
+    case "text":
+      return { ...draft, transform: transform2 };
+    case "image":
+      return { ...draft, transform: transform2 };
+    case "vector":
+      return { ...draft, transform: transform2 };
+  }
+}
+function block(width, height, draft) {
+  return { width, height, draft };
+}
+function at(x, y, item) {
+  return shifted(item.draft, x, y);
+}
+function mark(shape, height, fill, name) {
+  const scale = height / shape.box.h;
+  return block(
+    shape.box.w * scale,
+    height,
+    vector({
+      name,
+      geometry: { kind: "path", d: shape.d, fillRule: shape.fillRule },
+      size: shape.box,
+      fill: solid(fill),
+      transform: { scaleX: scale, scaleY: scale }
+    })
+  );
+}
 function reportOverflow(report, bottom, limit) {
   const overflow = bottom - limit;
   if (overflow > 0) report({ code: "W_TEMPLATE_OVERFLOW", overflow });
@@ -21814,8 +21915,95 @@ function plain(text2) {
   }).join("");
 }
 
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-EIGOHDOF.js
+var PLACEHOLDER_LOGO = {
+  box: { w: 186.09, h: 376.79 },
+  d: (
+    // The rectangle, its corners rounded by quarter arcs.
+    "M24,0H162.09A24,24,0,0,1,186.09,24V352.79A24,24,0,0,1,162.09,376.79H24A24,24,0,0,1,0,352.79V24A24,24,0,0,1,24,0ZM51.05,120A42,42,0,1,0,135.05,120A42,42,0,1,0,51.05,120Z"
+  ),
+  fillRule: "evenodd"
+};
+function drawBrandMark(shape, height, inks, name) {
+  if (!isTonedMark(shape)) return mark(shape, height, inks.primary, name);
+  const scale = height / shape.box.h;
+  return block(
+    shape.box.w * scale,
+    height,
+    group({
+      name,
+      children: shape.layers.map(
+        (layer) => vector({
+          name: `${name}-${layer.tone}`,
+          geometry: { kind: "path", d: layer.d, fillRule: layer.fillRule },
+          size: shape.box,
+          fill: solid(inks[layer.tone]),
+          transform: { scaleX: scale, scaleY: scale }
+        })
+      )
+    })
+  );
+}
+function drawLogo(kit, height, inks) {
+  return drawBrandMark(kit.logo ?? PLACEHOLDER_LOGO, height, inks, "logo");
+}
+
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.4.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
+var TITLE_INK = "#7c7c7c";
+var ROW_INK = "#393939";
+var FACE = systemFont("CircularXX");
+var BOOK = 400;
+var BOLD2 = 700;
+var TYPE = {
+  title: 81,
+  day: 55,
+  schedule: 29,
+  exam: 25,
+  cta: 29,
+  note: 32,
+  signature: 28
+};
+var TITLE2 = {
+  /** A line's box, as a multiple of the size: one line and its leading. */
+  lineHeight: 1.2,
+  /** Between the title and the first day. */
+  gap: 74
+};
+var ROXO = {
+  accent: "#5900a6",
+  signOff: { kind: "note", text: "Clique no link para mais informa\xE7\xF5es" }
+};
+var ROXO_TABLE = { accent: ROXO.accent };
+var style = (size, weight, color2) => ({
+  font: FACE,
+  size,
+  weight,
+  color: color2
+});
+var EXAM_STYLE = style(TYPE.exam, BOOK, ROW_INK);
+var TITLE_STYLE = style(TYPE.title, BOLD2, TITLE_INK);
+var TITLE_LINE = Math.round(TYPE.title * TITLE2.lineHeight);
+var NUMBER = String.raw`\d[\d.,]*`;
+var TABLE_VALUE_DEFAULTS = {
+  "title-gap": TITLE.gap,
+  "title-floor": TITLE.floor,
+  "title-ceiling": TITLE.ceiling,
+  "body-floor": BODY.floor,
+  "body-ceiling": BODY.ceiling,
+  "optical-drop": OPTICAL_DROP,
+  paper: PAPER,
+  ink: INK,
+  zebra: ZEBRA,
+  "on-accent": ON_ACCENT,
+  "signature-ink": SIGNATURE_INK
+};
+
 // src/template.ts
-var TITLE = "NEWS\nDA\nSEMANA";
+var TITLE3 = [
+  { words: "NEWS", x: 106, capTop: 516 },
+  { words: "DA", x: 106, capTop: 608 },
+  { words: "SEMANA", x: 109, capTop: 699 }
+];
 var OVERLINE = "NEWS DA SEMANA";
 var DEFAULT_SUBTITLE = "Segue resumo das\nprincipais not\xEDcias\nda semana:";
 var COLOR_DEFAULTS = {
@@ -21829,12 +22017,19 @@ var COLOR_DEFAULTS = {
   /** The line under the title. */
   "subtitle-ink": "#8c8c8c",
   /** The small spaced words at the top. */
-  "overline-ink": "#828282"
+  "overline-ink": "#828282",
+  /** The logo's two tones, as the reference draws the owl: the kit's primary, then its secondary. */
+  logo: "#4c2fa6",
+  "logo-shade": "#7460ef",
+  /** The two thin diagonals. */
+  "rule-ink": "#8f8f8f",
+  /** The page's corner marks. */
+  "corner-ink": "#585858"
 };
-var FACE = { family: "CircularXX", source: "system" };
+var FACE2 = { family: "CircularXX", source: "system" };
 var LIGHT = 300;
 var REGULAR = 400;
-var BOLD2 = 700;
+var BOLD3 = 700;
 var ASCENT = 0.75;
 var DESCENT = 0.25;
 var CAP_HEIGHT = 0.709;
@@ -21845,7 +22040,7 @@ var SLIDE_WIDTH = 1080;
 var ESTIMATED_ADVANCE = 0.5;
 var NEWS = {
   x: 445,
-  width: 511,
+  width: 518,
   size: 23.97,
   /** From one line's capitals to the next's, 40.45 px in the reference. */
   lineHeight: 40.45 / 23.97,
@@ -21871,36 +22066,96 @@ var build = (context) => {
         color: ink("overline-ink"),
         width: SLIDE_WIDTH,
         align: "center",
-        letterSpacing: 35
+        letterSpacing: 25.7
       }),
-      textAt("titulo", TITLE, {
-        x: 111,
-        capTop: 515,
-        size: 69.64,
-        weight: BOLD2,
-        color: ink("title-ink"),
-        lineHeight: 91.5 / 69.64
-      }),
+      ...TITLE3.map(
+        (line) => textAt("titulo", line.words, {
+          x: line.x,
+          capTop: line.capTop,
+          size: 70.3,
+          weight: BOLD3,
+          color: ink("title-ink")
+        })
+      ),
       textAt("subtitulo", slotText(context, "subtitulo", DEFAULT_SUBTITLE), {
         x: 115,
         capTop: 899,
         size: 30,
-        weight: BOLD2,
+        weight: BOLD3,
         color: ink("subtitle-ink"),
         lineHeight: 36.5 / 30,
         width: 300
       }),
-      news(context, ink)
+      news(context, ink),
+      at(
+        113,
+        353,
+        drawLogo(context.brand, 88, { primary: ink("logo"), secondary: ink("logo-shade") })
+      ),
+      ...rules(ink("rule-ink")),
+      ...corners(ink("corner-ink")),
+      squares(ink("subtitle-ink")),
+      ...context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink("title-ink"))]
     ]
   });
 };
+function rules(color2) {
+  const diagonal = (name, x, y, length) => vector({
+    name,
+    geometry: { kind: "path", d: `M0 0L${length} ${length}`, fillRule: "nonzero" },
+    size: { w: length, h: length },
+    stroke: { paint: solid(color2), width: 1, align: "center" },
+    transform: { x, y }
+  });
+  return [diagonal("diagonal-logo", 44, 445, 54), diagonal("diagonal-titulo", 354, 765, 60)];
+}
+function corners(color2) {
+  const corner = (name, x, y, d) => vector({
+    name,
+    geometry: { kind: "path", d, fillRule: "nonzero" },
+    size: { w: 14, h: 14 },
+    fill: solid(color2),
+    transform: { x, y }
+  });
+  return [
+    corner("canto-superior", 112, 135, "M0 0H14V4H4V14H0Z"),
+    corner("canto-inferior", 955, 1201, "M10 0H14V14H0V10H10Z")
+  ];
+}
+function squares(color2) {
+  return vector({
+    name: "quadrados",
+    geometry: {
+      kind: "path",
+      d: "M10 0H19V10H11V20H0V9H10Z M1 10V19H9V10Z",
+      fillRule: "evenodd"
+    },
+    size: { w: 19, h: 20 },
+    fill: solid(color2),
+    transform: { x: 112, y: 813 }
+  });
+}
+function arrow(color2) {
+  const box = { x: 894, y: 1258, w: 106, h: 35, shaft: 9 };
+  const head = Math.round(box.h * 0.64);
+  const top = (box.h - box.shaft) / 2;
+  const neck = box.w - head;
+  const d = `M0 ${top}H${neck}V0L${box.w} ${box.h / 2}L${neck} ${box.h}V${top + box.shaft}H0Z`;
+  return vector({
+    name: "seta",
+    geometry: { kind: "path", d, fillRule: "nonzero" },
+    size: { w: box.w, h: box.h },
+    fill: solid(color2),
+    transform: { x: box.x, y: box.y }
+  });
+}
 function news(context, ink) {
   const written = slideRichLines(context);
-  const body = { font: FACE, size: NEWS.size, weight: LIGHT, color: ink("body-ink") };
+  const body = { font: FACE2, size: NEWS.size, weight: LIGHT, color: ink("body-ink") };
   const runs = written.flatMap((line, index) => [
     ...index > 0 ? [lineBreak()] : [],
-    ...runsOf(line, body, { bold: BOLD2 }).map(
-      (item) => item.kind === "text" && item.weight === BOLD2 ? { ...item, color: solid(ink("label-ink")) } : item
+    ...runsOf(line, body, { bold: BOLD3 }).map(
+      (item) => item.kind === "text" && item.weight === BOLD3 ? { ...item, color: solid(ink("label-ink")) } : item
     )
   ]);
   const box = { x: NEWS.x, size: NEWS.size, lineHeight: NEWS.lineHeight, width: NEWS.width };
@@ -21913,18 +22168,18 @@ function news(context, ink) {
   return textRuns("noticias", runs, { ...box, capTop });
 }
 function textAt(name, words, placed) {
-  const style = { font: FACE, size: placed.size, weight: placed.weight, color: placed.color };
+  const style2 = { font: FACE2, size: placed.size, weight: placed.weight, color: placed.color };
   const [first = "", ...others] = words.split("\n");
   return textRuns(
     name,
-    [run(first, style), ...others.flatMap((line) => [lineBreak(), run(line, style)])],
+    [run(first, style2), ...others.flatMap((line) => [lineBreak(), run(line, style2)])],
     placed
   );
 }
 function textRuns(name, runs, placed) {
   const lineHeight = placed.lineHeight ?? 1;
   const [head, ...tail] = runs;
-  const empty = run("", { font: FACE, size: placed.size, weight: REGULAR, color: "#000000" });
+  const empty = run("", { font: FACE2, size: placed.size, weight: REGULAR, color: "#000000" });
   return text({
     name,
     runs: [head ?? empty, ...tail],

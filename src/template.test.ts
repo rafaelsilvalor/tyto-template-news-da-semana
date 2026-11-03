@@ -67,9 +67,12 @@ describe('news-da-semana', () => {
 
     expect(drawn).toHaveLength(2);
     expect(drawn.map((slide) => slide.size)).toEqual(Array(2).fill({ w: 1080, h: 1350 }));
-    expect(drawn.map((slide) => words(named(slide, 'titulo')))).toEqual(
-      Array(2).fill('NEWS\nDA\nSEMANA'),
-    );
+    const title = (slide: Frame) =>
+      texts(slide)
+        .filter((node) => node.name === 'titulo')
+        .map(words)
+        .join('\n');
+    expect(drawn.map(title)).toEqual(Array(2).fill('NEWS\nDA\nSEMANA'));
     expect(words(named(drawn[0]!, 'noticias'))).toContain('QCX Norte:');
     expect(words(named(drawn[1]!, 'noticias'))).toContain('Bombeiro XY:');
   });

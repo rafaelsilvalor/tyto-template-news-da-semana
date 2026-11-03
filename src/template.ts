@@ -11,16 +11,33 @@
  * (Tyto ADR 0153) whose default is the reference's.
  */
 
-import { colorValue, lineBreak, run, runsOf, solid, text, frame } from '@tyto/core/template';
-import { lines, plain, reportOverflow } from '@tyto/template-kit';
+import {
+  colorValue,
+  frame,
+  lineBreak,
+  run,
+  runsOf,
+  solid,
+  text,
+  vector,
+} from '@tyto/core/template';
+import { drawLogo } from '@tyto/house-style';
+import { at, lines, plain, reportOverflow } from '@tyto/template-kit';
 
 import type { RichText, TemplateBuild, TemplateContext, TextRun } from '@tyto/core';
 import type { NodeDraft, TextDraft } from '@tyto/core/template';
 
 /* -------------------------------------------------------------------------- the words -- */
 
-/** The words over the list, in three lines, as the reference sets them. */
-const TITLE = 'NEWS\nDA\nSEMANA';
+/**
+ * The words over the list, one text a line as the reference sets them: each line's `x` puts
+ * its first letter's ink on the reference's left edge, 111 px, whatever that letter's bearing.
+ */
+const TITLE = [
+  { words: 'NEWS', x: 106, capTop: 516 },
+  { words: 'DA', x: 106, capTop: 608 },
+  { words: 'SEMANA', x: 109, capTop: 699 },
+] as const;
 
 /** The small spaced words at every slide's top. */
 const OVERLINE = 'NEWS DA SEMANA';
@@ -43,6 +60,13 @@ export const COLOR_DEFAULTS = {
   'subtitle-ink': '#8c8c8c',
   /** The small spaced words at the top. */
   'overline-ink': '#828282',
+  /** The logo's two tones, as the reference draws the owl: the kit's primary, then its secondary. */
+  logo: '#4c2fa6',
+  'logo-shade': '#7460ef',
+  /** The two thin diagonals. */
+  'rule-ink': '#8f8f8f',
+  /** The page's corner marks. */
+  'corner-ink': '#585858',
 } as const;
 
 type ColorName = keyof typeof COLOR_DEFAULTS;
@@ -73,7 +97,7 @@ const ESTIMATED_ADVANCE = 0.5;
 /** The list of news, the reference's: its column, its type and the height it is centred on. */
 export const NEWS = {
   x: 445,
-  width: 511,
+  width: 518,
   size: 23.97,
   /** From one line's capitals to the next's, 40.45 px in the reference. */
   lineHeight: 40.45 / 23.97,
@@ -102,16 +126,17 @@ export const build: TemplateBuild = (context: TemplateContext) => {
         color: ink('overline-ink'),
         width: SLIDE_WIDTH,
         align: 'center',
-        letterSpacing: 35,
+        letterSpacing: 25.7,
       }),
-      textAt('titulo', TITLE, {
-        x: 111,
-        capTop: 515,
-        size: 69.64,
-        weight: BOLD,
-        color: ink('title-ink'),
-        lineHeight: 91.5 / 69.64,
-      }),
+      ...TITLE.map((line) =>
+        textAt('titulo', line.words, {
+          x: line.x,
+          capTop: line.capTop,
+          size: 70.3,
+          weight: BOLD,
+          color: ink('title-ink'),
+        }),
+      ),
       textAt('subtitulo', slotText(context, 'subtitulo', DEFAULT_SUBTITLE), {
         x: 115,
         capTop: 899,
@@ -122,9 +147,80 @@ export const build: TemplateBuild = (context: TemplateContext) => {
         width: 300,
       }),
       news(context, ink),
+      at(
+        113,
+        353,
+        drawLogo(context.brand, 88, { primary: ink('logo'), secondary: ink('logo-shade') }),
+      ),
+      ...rules(ink('rule-ink')),
+      ...corners(ink('corner-ink')),
+      squares(ink('subtitle-ink')),
+      ...(context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink('title-ink'))]),
     ],
   });
 };
+
+/* ------------------------------------------------------------------------- the marks -- */
+
+/** The two thin diagonals, the reference's: one by the logo, one under "Semana". */
+function rules(color: string): NodeDraft[] {
+  const diagonal = (name: string, x: number, y: number, length: number): NodeDraft =>
+    vector({
+      name,
+      geometry: { kind: 'path', d: `M0 0L${length} ${length}`, fillRule: 'nonzero' },
+      size: { w: length, h: length },
+      stroke: { paint: solid(color), width: 1, align: 'center' },
+      transform: { x, y },
+    });
+  return [diagonal('diagonal-logo', 44, 445, 54), diagonal('diagonal-titulo', 354, 765, 60)];
+}
+
+/** The page's corner marks: top left under the top line, bottom right over the arrow. */
+function corners(color: string): NodeDraft[] {
+  const corner = (name: string, x: number, y: number, d: string): NodeDraft =>
+    vector({
+      name,
+      geometry: { kind: 'path', d, fillRule: 'nonzero' },
+      size: { w: 14, h: 14 },
+      fill: solid(color),
+      transform: { x, y },
+    });
+  return [
+    corner('canto-superior', 112, 135, 'M0 0H14V4H4V14H0Z'),
+    corner('canto-inferior', 955, 1201, 'M10 0H14V14H0V10H10Z'),
+  ];
+}
+
+/** The small mark over the subtitle: a filled square resting on an outlined one. */
+function squares(color: string): NodeDraft {
+  return vector({
+    name: 'quadrados',
+    geometry: {
+      kind: 'path',
+      d: 'M10 0H19V10H11V20H0V9H10Z M1 10V19H9V10Z',
+      fillRule: 'evenodd',
+    },
+    size: { w: 19, h: 20 },
+    fill: solid(color),
+    transform: { x: 112, y: 813 },
+  });
+}
+
+/** The arrow pointing to the next slide: a shaft and a triangular head 0.64 of its height long. */
+function arrow(color: string): NodeDraft {
+  const box = { x: 894, y: 1258, w: 106, h: 35, shaft: 9 };
+  const head = Math.round(box.h * 0.64);
+  const top = (box.h - box.shaft) / 2;
+  const neck = box.w - head;
+  const d = `M0 ${top}H${neck}V0L${box.w} ${box.h / 2}L${neck} ${box.h}V${top + box.shaft}H0Z`;
+  return vector({
+    name: 'seta',
+    geometry: { kind: 'path', d, fillRule: 'nonzero' },
+    size: { w: box.w, h: box.h },
+    fill: solid(color),
+    transform: { x: box.x, y: box.y },
+  });
+}
 
 /* ---------------------------------------------------------------------------- the news -- */
 

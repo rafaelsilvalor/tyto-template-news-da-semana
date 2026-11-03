@@ -1,7 +1,7 @@
 name: news-da-semana
-version: 0.2.0
+version: 0.3.0
 brand: roxo
-description: The week's news as a 1080×1350 carousel — "News da semana" and the logo on the left, the slide's news on the right, one bold label and its words after the other.
+description: The week's news as a 1080×1350 carousel — "News da semana" and the logo on the left, the slide's news on the right, one label and its words after the other.
 # Every face the slides set is declared, so the plugin's process can measure them (Tyto ADR 0048).
 # CircularXX is licensed: it crosses only under the manifest's `font:CircularXX`, approved at
 # install. `tests/faces.test.ts` holds this list equal to the faces the example draws.
@@ -19,9 +19,10 @@ slots:
   # The house's seal art, 1080 × 140, glued to the foot of the last slide (TYTO-201): the
   # bottom corner rises by it. In the frontmatter: `selo: ./selo.png`.
   selo: { type: image }
-  # One slide each, its news one after the other: `**Label:** words`, the label in bold. A line
-  # break in the brief is a line break on the slide, so `**Label:**` on a line of its own puts
-  # the words under it. `max` counts slides.
+  # One slide each, its news one after the other: `Label: words`, the label — what comes before
+  # a line's first `:` — in bold; `**…**` is the highlight anywhere, so `**Label:** words` draws
+  # the same. A line break in the brief is a line break on the slide, so `Label:` on a line of
+  # its own puts the words under it. `max` counts slides.
   lamina: { type: rich-text, repeat: true, min: 1, max: 10 }
 # What a configuration may change (Tyto ADR 0153): the colours. Each default is the reference
 # art's, and `tests/values.test.ts` pins them equal to the ones the code falls back to.
@@ -29,7 +30,7 @@ values:
   paper: { type: color, default: '#ffffff' }
   # "News da semana" in large.
   title-ink: { type: color, default: '#4d02a1' }
-  # A news item's label, its bold words.
+  # A news item's label, and its highlighted words.
   label-ink: { type: color, default: '#460292' }
   # A news item's other words.
   body-ink: { type: color, default: '#646464' }

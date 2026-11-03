@@ -1,10 +1,11 @@
 import { readFileSync } from 'node:fs';
 
 import { defineTemplate, formatCatalogue, parseManifest } from '@tyto/core';
+import { solid } from '@tyto/core/template';
 import { compileTemplate } from '@tyto/template-kit/testing';
 import { describe, expect, it } from 'vitest';
 
-import { DEFAULT_SUBTITLE, NEWS, build } from './template.js';
+import { COLOR_DEFAULTS, DEFAULT_SUBTITLE, NEWS, build } from './template.js';
 
 import type { AssetResolver, Frame, SceneNode, TextNode } from '@tyto/core';
 
@@ -65,6 +66,17 @@ const named = (slide: Frame, name: string): TextNode | undefined =>
 const words = (node: TextNode | undefined): string =>
   (node?.runs ?? []).map((piece) => (piece.kind === 'text' ? piece.text : '\n')).join('');
 
+const NBSP = String.fromCodePoint(0xa0);
+
+/** A declared colour's default, as the scene paints it. */
+const ink = (name: keyof typeof COLOR_DEFAULTS) => solid(COLOR_DEFAULTS[name]);
+
+/** The news' text runs as [words, weight, colour]: what a label and a highlight change. */
+const newsRuns = (slide: Frame): [string, number, unknown][] =>
+  named(slide, 'noticias')!.runs.flatMap((piece): [string, number, unknown][] =>
+    piece.kind === 'text' ? [[piece.text, piece.weight, piece.color]] : [],
+  );
+
 describe('news-da-semana', () => {
   it('declares the grid only, as the reference art', () => {
     expect(manifest.value.formats).toEqual(['grid']);
@@ -85,7 +97,7 @@ describe('news-da-semana', () => {
     expect(words(named(drawn[1]!, 'noticias'))).toContain('Bombeiro XY:');
   });
 
-  it("sets a news item's bold label Bold and its other words Light", async () => {
+  it("sets a news item's label Bold and its other words Light", async () => {
     const [slide] = await slides('::lamina\n  **Corex:** edital publicado');
     const runs = named(slide!, 'noticias')!.runs.filter((piece) => piece.kind === 'text');
 
@@ -93,6 +105,53 @@ describe('news-da-semana', () => {
       ['Corex:', 700],
       [' edital publicado', 300],
     ]);
+  });
+
+  it("reads a line's label before its first colon, Bold in the label's colour", async () => {
+    const [slide] = await slides('::lamina\n  Corex: edital publicado');
+
+    expect(newsRuns(slide!)).toEqual([
+      ['Corex:', 700, ink('label-ink')],
+      [' edital publicado', 300, ink('body-ink')],
+    ]);
+  });
+
+  it('draws a label written the v0.2.0 way, `**Label:**`, as the plain one', async () => {
+    const [old] = await slides('::lamina\n  **Corex:** edital publicado');
+    const [plain] = await slides('::lamina\n  Corex: edital publicado');
+
+    expect(newsRuns(old!)).toEqual(newsRuns(plain!));
+  });
+
+  it('keeps `**…**` the highlight past the label, and a label alone on its line', async () => {
+    const [slide] = await slides('::lamina\n  Corex:\n  edital com **200 vagas** em 2027');
+
+    expect(newsRuns(slide!)).toEqual([
+      ['Corex:', 700, ink('label-ink')],
+      ['edital com ', 300, ink('body-ink')],
+      ['200 vagas', 700, ink('label-ink')],
+      [' em 2027', 300, ink('body-ink')],
+    ]);
+  });
+
+  it('draws no label for a line without one: no colon, a time, a URL, a colon far in', async () => {
+    const written = [
+      'edital publicado com 320 vagas',
+      'prova às 10:30 no domingo',
+      'inscrições em https://exemplo.test/edital',
+      'edital publicado com trezentas e vinte vagas: inscrições abertas',
+    ];
+    const [slide] = await slides(`::lamina\n${written.map((line) => `  ${line}`).join('\n')}`);
+
+    expect(newsRuns(slide!).filter(([, weight]) => weight === 700)).toEqual([]);
+  });
+
+  it('keeps a price with its sign and its scale word, with no-break spaces', async () => {
+    const [slide] = await slides('::lamina\n  TRZ 2: iniciais de até R$ 16 mil e 12 % a mais');
+
+    expect(words(named(slide!, 'noticias'))).toBe(
+      `TRZ 2: iniciais de até R$${NBSP}16${NBSP}mil e 12${NBSP}% a mais`,
+    );
   });
 
   it("draws the reference subtitle by default, and the brief's when it writes one", async () => {

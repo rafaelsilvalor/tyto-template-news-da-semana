@@ -5,35 +5,47 @@
  * that introduces the list; on the right the slide's news, one `Label: words` after the other,
  * centred on the page's height. One `::lamina` is one slide.
  *
- * Every position is the reference art's (the maintainer's PSD), in the slide's pixels: a text
- * is placed by the top of its capitals, as the reference's layer bounds give it. The logo is
- * the brand kit's (Tyto ADR 0063), a placeholder without one; every colour is a declared value
- * (Tyto ADR 0153) whose default is the reference's.
+ * Every element is a piece of `@tyto/template-kit` or `@tyto/house-style` (Tyto ADR 0230): text
+ * placed by the top of its capitals is the kit's `capText`, the marks are its shapes. What stays
+ * here is the wiring and the reference art's coordinates as data (the maintainer's PSD, in the
+ * slide's pixels): a text is placed by the top of its capitals, as the reference's layer bounds
+ * give it. The logo is the brand kit's (Tyto ADR 0063), a placeholder without one; every colour
+ * is a declared value (Tyto ADR 0153) whose default is the reference's.
  */
 
-import {
-  colorValue,
-  frame,
-  lineBreak,
-  run,
-  runsOf,
-  solid,
-  text,
-  vector,
-} from '@tyto/core/template';
+import { colorValue, frame, lineBreak, runsOf, solid } from '@tyto/core/template';
 import { drawLogo, sealOf } from '@tyto/house-style';
 import {
+  anchorOf,
+  arrowShape,
   at,
+  atLeastOne,
+  capText,
+  cornerBracket,
+  highlights,
   keepTogether,
   labelOf,
-  lines,
+  mark,
   plain,
+  plainRuns,
   reportOverflow,
+  richTextOf,
+  rule,
   sealed,
+  slideRichLines,
+  trimmed,
 } from '@tyto/template-kit';
 
-import type { RichText, TemplateBuild, TemplateContext, TextRun } from '@tyto/core';
-import type { NodeDraft, TextDraft } from '@tyto/core/template';
+import type { RichText, TemplateBuild, TemplateContext } from '@tyto/core';
+import type { NodeDraft } from '@tyto/core/template';
+import type {
+  Block,
+  CapTextParameters,
+  CapTextStyle,
+  CornerBracketParameters,
+  Highlights,
+  Mark,
+} from '@tyto/template-kit';
 
 /* -------------------------------------------------------------------------- the words -- */
 
@@ -60,8 +72,21 @@ export const COLOR_DEFAULTS = {
   paper: '#ffffff',
   /** "News da semana" in large. */
   'title-ink': '#4d02a1',
-  /** A news item's label, what comes before its first `:`, and its `**highlighted**` words. */
+  /** A news item's label, what comes before its first `:`. */
   'label-ink': '#460292',
+  /**
+   * The highlights, named in the brief writer's language because a brief's frontmatter sets them
+   * (Tyto ADR 0226): `destaque: '#e30613'`. `**…**` is Bold in `destaque`, in the news and in the
+   * subtitle; its default is the label's colour, so a brief that sets nothing draws as before.
+   */
+  destaque: '#460292',
+  /**
+   * A second and a third highlight, painted only where a `{cor:…}` mark in the subtitle names
+   * them. A declared colour needs a constant default, so theirs is `destaque`'s, and a brief that
+   * marks them sets them.
+   */
+  'destaque-2': '#460292',
+  'destaque-3': '#460292',
   /** A news item's other words. */
   'body-ink': '#646464',
   /** The line under the title. */
@@ -85,19 +110,6 @@ const LIGHT = 300;
 const REGULAR = 400;
 const BOLD = 700;
 
-/**
- * CircularXX's vertical metrics, in em, from its `OS/2` table and the same in every weight: a
- * line of height `lineHeight` puts the content area in its middle, so the capitals start this
- * far below the line's top (measured on concursos-abertos against its reference art).
- */
-const ASCENT = 0.75;
-const DESCENT = 0.25;
-const CAP_HEIGHT = 0.709;
-
-function capOffset(size: number, lineHeight: number): number {
-  return size * ((lineHeight - (ASCENT + DESCENT)) / 2 + (ASCENT - CAP_HEIGHT));
-}
-
 const SLIDE_WIDTH = 1080;
 /** A glyph's advance, in em, for when nothing can be measured (a test, CI without the face). */
 const ESTIMATED_ADVANCE = 0.5;
@@ -116,6 +128,47 @@ export const NEWS = {
   bottom: 1190,
 } as const;
 
+/* ------------------------------------------------------------------------- the places -- */
+
+/** The small spaced words, centred across the slide. */
+const OVERLINE_TYPE = { size: 12.7, align: 'center', letterSpacing: 25.7 } as const;
+const OVERLINE_PLACE = { x: 0, capTop: 87, width: SLIDE_WIDTH } as const;
+const TITLE_TYPE = { size: 70.3 } as const;
+const SUBTITLE_TYPE = { size: 30, lineHeight: 36.5 / 30 } as const;
+const SUBTITLE_PLACE = { x: 115, capTop: 899, width: 300 } as const;
+const LOGO = { x: 113, y: 353, height: 88 } as const;
+
+/** The two thin diagonals, the reference's: one by the logo, one under "Semana". */
+const DIAGONALS = [
+  { name: 'diagonal-logo', x: 44, y: 445, length: 54 },
+  { name: 'diagonal-titulo', x: 354, y: 765, length: 60 },
+] as const;
+
+/** The page's corner marks: top left under the top line, bottom right over the arrow. */
+const CORNERS: readonly {
+  readonly name: string;
+  readonly x: number;
+  readonly y: number;
+  readonly corner: CornerBracketParameters['corner'];
+  /** Whether the seal's band lifts it. */
+  readonly lifts: boolean;
+}[] = [
+  { name: 'canto-superior', x: 112, y: 135, corner: 'top-left', lifts: false },
+  { name: 'canto-inferior', x: 955, y: 1201, corner: 'bottom-right', lifts: true },
+];
+const CORNER_SIZE = 14;
+
+/** The small mark over the subtitle: a filled square resting on an outlined one. */
+const SQUARES: Mark = {
+  box: { w: 19, h: 20 },
+  d: 'M10 0H19V10H11V20H0V9H10Z M1 10V19H9V10Z',
+  fillRule: 'evenodd',
+};
+const SQUARES_PLACE = { x: 112, y: 813 } as const;
+
+/** The arrow pointing to the next slide, its head the kit's default 0.64 of its height long. */
+const ARROW = { x: 894, y: 1258, w: 106, h: 35 } as const;
+
 /* --------------------------------------------------------------------------- the build -- */
 
 export const build: TemplateBuild = (context: TemplateContext) => {
@@ -124,115 +177,132 @@ export const build: TemplateBuild = (context: TemplateContext) => {
   // bottom corner and the list's room rise by its band.
   const page = sealed(context.size, sealOf(context));
   const lift = context.size.h - page.size.h;
+  const marks = highlightsOf(ink);
+  const style = (weight: number, color: ColorName, size: number) => ({
+    font: FACE,
+    size,
+    weight,
+    color: ink(color),
+  });
   return frame({
     format: context.format,
     size: context.size,
     idPrefix: context.idPrefix,
     background: solid(ink('paper')),
     children: [
-      textAt('sobretitulo', OVERLINE, {
-        x: 0,
-        capTop: 87,
-        size: 12.7,
-        weight: REGULAR,
-        color: ink('overline-ink'),
-        width: SLIDE_WIDTH,
-        align: 'center',
-        letterSpacing: 25.7,
-      }),
+      byCapitals(
+        OVERLINE_PLACE,
+        capText(
+          plainRuns(OVERLINE, style(REGULAR, 'overline-ink', OVERLINE_TYPE.size)),
+          { width: OVERLINE_PLACE.width, height: Infinity },
+          OVERLINE_TYPE,
+          { name: 'sobretitulo' },
+        ),
+      ),
       ...TITLE.map((line) =>
-        textAt('titulo', line.words, {
-          x: line.x,
-          capTop: line.capTop,
-          size: 70.3,
-          weight: BOLD,
-          color: ink('title-ink'),
+        byCapitals(
+          line,
+          capText(
+            plainRuns(line.words, style(BOLD, 'title-ink', TITLE_TYPE.size)),
+            { width: Infinity, height: Infinity },
+            TITLE_TYPE,
+            { name: 'titulo' },
+          ),
+        ),
+      ),
+      byCapitals(
+        SUBTITLE_PLACE,
+        capText(
+          subtitle(context, style(BOLD, 'subtitle-ink', SUBTITLE_TYPE.size), marks.header),
+          { width: SUBTITLE_PLACE.width, height: Infinity },
+          SUBTITLE_TYPE,
+          { name: 'subtitulo' },
+        ),
+      ),
+      news(context, ink, marks.news, lift),
+      at(
+        LOGO.x,
+        LOGO.y,
+        drawLogo(context.brand, LOGO.height, {
+          primary: ink('logo'),
+          secondary: ink('logo-shade'),
         }),
       ),
-      textAt('subtitulo', slotText(context, 'subtitulo', DEFAULT_SUBTITLE), {
-        x: 115,
-        capTop: 899,
-        size: 30,
-        weight: BOLD,
-        color: ink('subtitle-ink'),
-        lineHeight: 36.5 / 30,
-        width: 300,
-      }),
-      news(context, ink, lift),
-      at(
-        113,
-        353,
-        drawLogo(context.brand, 88, { primary: ink('logo'), secondary: ink('logo-shade') }),
+      ...DIAGONALS.map((diagonal) =>
+        at(
+          diagonal.x,
+          diagonal.y,
+          rule(
+            diagonal.length,
+            solid(ink('rule-ink')),
+            { direction: 'diagonal-down', thickness: 1 },
+            { name: diagonal.name },
+          ),
+        ),
       ),
-      ...rules(ink('rule-ink')),
-      ...corners(ink('corner-ink'), lift),
-      squares(ink('subtitle-ink')),
-      ...(context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink('title-ink'))]),
+      ...CORNERS.map((corner) =>
+        at(
+          corner.x,
+          corner.y - (corner.lifts ? lift : 0),
+          cornerBracket(
+            CORNER_SIZE,
+            solid(ink('corner-ink')),
+            { corner: corner.corner },
+            { name: corner.name },
+          ),
+        ),
+      ),
+      at(
+        SQUARES_PLACE.x,
+        SQUARES_PLACE.y,
+        mark(SQUARES, SQUARES.box.h, ink('subtitle-ink'), 'quadrados'),
+      ),
+      ...(context.artwork.index === context.artwork.count - 1
+        ? []
+        : [
+            at(
+              ARROW.x,
+              ARROW.y,
+              arrowShape({ w: ARROW.w, h: ARROW.h }, solid(ink('title-ink')), {}, { name: 'seta' }),
+            ),
+          ]),
       ...page.seal,
     ],
   });
 };
 
-/* ------------------------------------------------------------------------- the marks -- */
+/* ---------------------------------------------------------------------- the highlights -- */
 
-/** The two thin diagonals, the reference's: one by the logo, one under "Semana". */
-function rules(color: string): NodeDraft[] {
-  const diagonal = (name: string, x: number, y: number, length: number): NodeDraft =>
-    vector({
-      name,
-      geometry: { kind: 'path', d: `M0 0L${length} ${length}`, fillRule: 'nonzero' },
-      size: { w: length, h: length },
-      stroke: { paint: solid(color), width: 1, align: 'center' },
-      transform: { x, y },
-    });
-  return [diagonal('diagonal-logo', 44, 445, 54), diagonal('diagonal-titulo', 354, 765, 60)];
+/** The mark family that paints a span of the header: `{cor:destaque-2}…{/}`. */
+const COLOR_MARK = 'cor';
+/** The colours a `{cor:…}` mark may name: the highlights the brief can set in its frontmatter. */
+const HIGHLIGHT_NAMES = ['destaque', 'destaque-2', 'destaque-3'] as const;
+
+/**
+ * What the brief's highlights look like, as anuncio has them (TYTO-554, TYTO-847): `**…**` is
+ * Bold in `destaque` everywhere; the header also takes `{cor:destaque|destaque-2|destaque-3}`,
+ * colour only (`like: 'plain'`), so a brief that sets `destaque-2: '#…'` in its frontmatter has a
+ * second highlight there. A name the template does not declare leaves the words as they are.
+ */
+function highlightsOf(ink: Ink): { readonly news: Highlights; readonly header: Highlights } {
+  const news = highlights({ bold: { color: ink('destaque') } });
+  const values = Object.fromEntries(HIGHLIGHT_NAMES.map((name) => [name, { color: ink(name) }]));
+  return { news, header: news.with({ marks: { [COLOR_MARK]: { like: 'plain', values } } }) };
 }
 
-/** The page's corner marks: top left under the top line, bottom right over the arrow. */
-function corners(color: string, lift: number): NodeDraft[] {
-  const corner = (name: string, x: number, y: number, d: string): NodeDraft =>
-    vector({
-      name,
-      geometry: { kind: 'path', d, fillRule: 'nonzero' },
-      size: { w: 14, h: 14 },
-      fill: solid(color),
-      transform: { x, y },
-    });
-  return [
-    corner('canto-superior', 112, 135, 'M0 0H14V4H4V14H0Z'),
-    corner('canto-inferior', 955, 1201 - lift, 'M10 0H14V14H0V10H10Z'),
-  ];
+/** The brief's subtitle with its highlights, or the reference's words when it writes none. */
+function subtitle(context: TemplateContext, style: CapTextStyle, marks: Highlights) {
+  const written = richTextOf(context, 'subtitulo');
+  const drawn =
+    written === undefined || plain(written).trim() === ''
+      ? undefined
+      : atLeastOne(runsOf(trimmed(written), style, marks.options));
+  return drawn ?? plainRuns(DEFAULT_SUBTITLE, style);
 }
 
-/** The small mark over the subtitle: a filled square resting on an outlined one. */
-function squares(color: string): NodeDraft {
-  return vector({
-    name: 'quadrados',
-    geometry: {
-      kind: 'path',
-      d: 'M10 0H19V10H11V20H0V9H10Z M1 10V19H9V10Z',
-      fillRule: 'evenodd',
-    },
-    size: { w: 19, h: 20 },
-    fill: solid(color),
-    transform: { x: 112, y: 813 },
-  });
-}
-
-/** The arrow pointing to the next slide: a shaft and a triangular head 0.64 of its height long. */
-function arrow(color: string): NodeDraft {
-  const box = { x: 894, y: 1258, w: 106, h: 35, shaft: 9 };
-  const head = Math.round(box.h * 0.64);
-  const top = (box.h - box.shaft) / 2;
-  const neck = box.w - head;
-  const d = `M0 ${top}H${neck}V0L${box.w} ${box.h / 2}L${neck} ${box.h}V${top + box.shaft}H0Z`;
-  return vector({
-    name: 'seta',
-    geometry: { kind: 'path', d, fillRule: 'nonzero' },
-    size: { w: box.w, h: box.h },
-    fill: solid(color),
-    transform: { x: box.x, y: box.y },
-  });
+/** A text block placed so that its capitals start at `capTop`. */
+function byCapitals(place: { readonly x: number; readonly capTop: number }, words: Block) {
+  return at(place.x, place.capTop - anchorOf(words).capTop, words);
 }
 
 /* ---------------------------------------------------------------------------- the news -- */
@@ -242,117 +312,49 @@ function arrow(color: string): NodeDraft {
  * first `:`, the house convention (TYTO-594) — Bold in the label's colour and the rest Light,
  * centred on the reference's middle and reported when it overruns its room.
  *
- * `**…**` is the house's highlight wherever it is written, Bold in the label's colour as well:
- * so a line written the v0.2.0 way, `**Label:** words`, draws what it drew then. A price never
+ * `**…**` is the house's highlight wherever it is written, Bold in `destaque`, whose default is
+ * the label's colour: so a line written the v0.2.0 way, `**Label:** words`, draws what it drew
+ * then. A `{cor:…}` mark changes nothing here; the header takes it. A price never
  * splits from its sign or its scale word (TYTO-593): "R$ 9,8 mil" keeps one line.
  */
-function news(context: TemplateContext, ink: Ink, lift: number): NodeDraft {
+function news(context: TemplateContext, ink: Ink, marks: Highlights, lift: number): NodeDraft {
   const written = slideRichLines(context);
   const body = { font: FACE, size: NEWS.size, weight: LIGHT, color: ink('body-ink') };
+  const labelStyle = { ...body, weight: BOLD, color: ink('label-ink') };
   const runs = written.flatMap((line, index) => {
-    const { label, text } = labelOf(keepTogether(line));
+    const { label, text: words } = labelOf(keepTogether(line));
     return [
       ...(index > 0 ? [lineBreak()] : []),
-      ...[
-        ...(label === undefined ? [] : runsOf(label, { ...body, weight: BOLD }, { bold: BOLD })),
-        ...runsOf(text, body, { bold: BOLD }),
-      ].map((item) =>
-        item.kind === 'text' && item.weight === BOLD
-          ? { ...item, color: solid(ink('label-ink')) }
-          : item,
-      ),
+      ...(label === undefined ? [] : runsOf(label, labelStyle, marks.options)),
+      ...runsOf(words, body, marks.options),
     ];
   });
-  const box = { x: NEWS.x, size: NEWS.size, lineHeight: NEWS.lineHeight, width: NEWS.width };
-  const draft = textRuns('noticias', runs, { ...box, capTop: 0 });
-  const count = lineCount(context, draft, written, NEWS.size, NEWS.width);
-  const pitch = NEWS.size * NEWS.lineHeight;
-  const height = (count - 1) * pitch + NEWS.size * CAP_HEIGHT;
+  // A slide with no news still draws one empty text, as it always has.
+  const drawn =
+    atLeastOne(runs) ??
+    plainRuns('', { font: FACE, size: NEWS.size, weight: REGULAR, color: '#000000' });
+  const type: Partial<CapTextParameters> = { size: NEWS.size, lineHeight: NEWS.lineHeight };
+  const area = { width: NEWS.width, height: Infinity };
+  const probe = capText(drawn, area, type, { name: 'noticias' }).draft;
+  const measured = probe.kind === 'text' ? context.measure(probe)?.lines : undefined;
+  const lines = Math.max(1, measured ?? estimatedLines(written));
+  const list = capText(drawn, area, type, { name: 'noticias', lines });
+  const anchor = anchorOf(list);
+  const height = anchor.baseline - anchor.capTop;
   const capTop = Math.max(NEWS.top, NEWS.centre - height / 2);
   reportOverflow(context.report, capTop + height, NEWS.bottom - lift);
-  return textRuns('noticias', runs, { ...box, capTop });
-}
-
-/* -------------------------------------------------------------------------- the shared -- */
-
-interface Box {
-  readonly x: number;
-  /** Where the capitals start, in the slide's pixels. */
-  readonly capTop: number;
-  readonly lineHeight?: number;
-  readonly width?: number;
-  readonly align?: 'left' | 'center';
-  readonly letterSpacing?: number;
-}
-
-interface Placed extends Box {
-  readonly size: number;
-  readonly weight: number;
-  readonly color: string;
-}
-
-/** A plain text, one run per line, placed by the top of its capitals. */
-function textAt(name: string, words: string, placed: Placed): TextDraft {
-  const style = { font: FACE, size: placed.size, weight: placed.weight, color: placed.color };
-  const [first = '', ...others] = words.split('\n');
-  return textRuns(
-    name,
-    [run(first, style), ...others.flatMap((line) => [lineBreak(), run(line, style)])],
-    placed,
-  );
-}
-
-function textRuns(
-  name: string,
-  runs: readonly TextRun[],
-  placed: Box & { readonly size: number },
-): TextDraft {
-  const lineHeight = placed.lineHeight ?? 1;
-  const [head, ...tail] = runs;
-  const empty = run('', { font: FACE, size: placed.size, weight: REGULAR, color: '#000000' });
-  return text({
-    name,
-    runs: [head ?? empty, ...tail],
-    ...(placed.width === undefined ? {} : { box: { w: placed.width } }),
-    align: placed.align ?? 'left',
-    lineHeight,
-    letterSpacing: placed.letterSpacing ?? 0,
-    transform: { x: placed.x, y: placed.capTop - capOffset(placed.size, lineHeight) },
-  });
+  return at(NEWS.x, capTop - anchor.capTop, list);
 }
 
 /**
- * How many lines a text wraps to: measured when the context can, estimated otherwise from the
- * characters a line of `width` holds, each line written counted apart.
+ * Pending TYTO-905: how many lines the news wrap to when nothing can measure them, from the
+ * characters a line of the column holds, each written line counted apart. It goes when the
+ * kit's `capText` estimates by width itself.
  */
-function lineCount(
-  context: TemplateContext,
-  node: NodeDraft,
-  written: readonly RichText[],
-  size: number,
-  width: number,
-): number {
-  const measured = node.kind === 'text' ? context.measure(node) : undefined;
-  if (measured !== undefined) return Math.max(1, measured.lines);
-  const perLine = Math.max(1, Math.floor(width / (size * ESTIMATED_ADVANCE)));
-  const count = written.reduce<number>((sum, line) => {
-    const characters = [...plain(line)].length;
-    return sum + Math.max(1, Math.ceil(characters / perLine));
-  }, 0);
-  return Math.max(1, count);
-}
-
-/** This slide's written lines as rich text, the empty ones dropped. */
-function slideRichLines(context: TemplateContext): RichText[] {
-  const value = context.slots['lamina']?.value;
-  if (value?.kind !== 'rich-text') return [];
-  return lines(value.text).filter((line) => plain(line).trim() !== '');
-}
-
-/** A rich-text slot's words as plain text, or the template's default when the brief left it out. */
-function slotText(context: TemplateContext, name: string, fallback: string): string {
-  const value = context.slots[name]?.value;
-  if (value?.kind !== 'rich-text') return fallback;
-  const words = plain(value.text).trim();
-  return words === '' ? fallback : words;
+function estimatedLines(written: readonly RichText[]): number {
+  const perLine = Math.max(1, Math.floor(NEWS.width / (NEWS.size * ESTIMATED_ADVANCE)));
+  return written.reduce<number>(
+    (sum, line) => sum + Math.max(1, Math.ceil([...plain(line)].length / perLine)),
+    0,
+  );
 }

@@ -2805,23 +2805,23 @@ function canParseURL(input2) {
     return false;
   }
 }
-function validateURL(trimmed, def) {
+function validateURL(trimmed2, def) {
   if (!("normalize" in def) && !("hostname" in def) && !("protocol" in def)) {
-    return canParseURL(trimmed) || URL_UNPARSEABLE;
+    return canParseURL(trimmed2) || URL_UNPARSEABLE;
   }
-  return parseURLObject(trimmed, def);
+  return parseURLObject(trimmed2, def);
 }
-function parseURLObject(trimmed, def) {
-  if (!def.normalize && def.protocol?.source === httpProtocol.source && !/^https?:\/\//i.test(trimmed)) {
+function parseURLObject(trimmed2, def) {
+  if (!def.normalize && def.protocol?.source === httpProtocol.source && !/^https?:\/\//i.test(trimmed2)) {
     return URL_BAD_FORMAT;
   }
   try {
     if (typeof URL !== "undefined") {
       const URLStatic = URL;
       if (typeof URLStatic.parse === "function")
-        return URLStatic.parse(trimmed) ?? URL_UNPARSEABLE;
+        return URLStatic.parse(trimmed2) ?? URL_UNPARSEABLE;
     }
-    return new URL(trimmed);
+    return new URL(trimmed2);
   } catch {
     return URL_UNPARSEABLE;
   }
@@ -2842,8 +2842,8 @@ var $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
   $ZodStringFormat.init(inst, def);
   inst._zod.check = (payload) => {
     try {
-      const trimmed = payload.value.trim();
-      const url2 = validateURL(trimmed, def);
+      const trimmed2 = payload.value.trim();
+      const url2 = validateURL(trimmed2, def);
       if (url2 === URL_BAD_FORMAT) {
         payload.issues.push({
           code: "invalid_format",
@@ -2866,7 +2866,7 @@ var $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
         return;
       }
       if (url2 === true) {
-        payload.value = stripTabAndNewline(trimmed);
+        payload.value = stripTabAndNewline(trimmed2);
         return;
       }
       if (def.hostname && !urlHostnameOk(url2, def.hostname)) {
@@ -2891,7 +2891,7 @@ var $ZodURL = /* @__PURE__ */ $constructor("$ZodURL", (inst, def) => {
           continue: !def.abort
         });
       }
-      payload.value = def.normalize ? url2.href : stripTabAndNewline(trimmed);
+      payload.value = def.normalize ? url2.href : stripTabAndNewline(trimmed2);
       return;
     } catch (_) {
       payload.issues.push({
@@ -5098,7 +5098,7 @@ function isRecursive(inst, stack, resolve) {
     }
     return answer;
   };
-  const merge2 = (answer) => {
+  const merge3 = (answer) => {
     if (answer > result)
       result = answer;
   };
@@ -5107,7 +5107,7 @@ function isRecursive(inst, stack, resolve) {
   switch (kind) {
     case "object": {
       const raw = rawShape(def);
-      merge2(raw ? shape(raw, true) : ASSUMED);
+      merge3(raw ? shape(raw, true) : ASSUMED);
       check2(def.catchall);
       break;
     }
@@ -5157,7 +5157,7 @@ function isRecursive(inst, stack, resolve) {
     // `$ZodLazy` caches its inner on the def, so a resolved edge is followed exactly
     case "lazy": {
       const inner = def._cachedInner ?? (resolve ? inst._zod.innerType : void 0);
-      merge2(inner ? isRecursive(inner, stack, false) : ASSUMED);
+      merge3(inner ? isRecursive(inner, stack, false) : ASSUMED);
       break;
     }
     // a leaf by choice: `parts` are regex fragments, not data positions
@@ -22557,6 +22557,52 @@ function plainRuns(words, style2) {
   const [first = "", ...others] = words.split("\n");
   return [run(first, style2), ...others.flatMap((line) => [lineBreak(), run(line, style2)])];
 }
+var HIGHLIGHT_WEIGHT = 700;
+function mergeFamilies(base2, over) {
+  if (over === void 0) return base2;
+  const merged = { ...base2 };
+  for (const [key, family] of Object.entries(over)) {
+    const previous = merged[key];
+    const like = family.like ?? previous?.like;
+    merged[key] = {
+      ...like === void 0 ? {} : { like },
+      values: { ...previous?.values, ...family.values }
+    };
+  }
+  return merged;
+}
+function merge2(base2, over) {
+  const marks = mergeFamilies(base2.marks, over.marks);
+  return {
+    bold: { ...base2.bold, ...over.bold },
+    italic: { ...base2.italic, ...over.italic },
+    ...marks === void 0 ? {} : { marks }
+  };
+}
+function markStyle(spec, key, value) {
+  const family = spec.marks?.[key];
+  const named = family?.values[value];
+  if (family === void 0 || named === void 0) return void 0;
+  switch (family.like) {
+    case "bold":
+      return { weight: HIGHLIGHT_WEIGHT, ...spec.bold, ...named };
+    case "italic":
+      return { ...spec.italic, ...named, style: "italic" };
+    default:
+      return named;
+  }
+}
+function highlights(spec) {
+  return {
+    spec,
+    options: {
+      bold: { weight: HIGHLIGHT_WEIGHT, ...spec.bold },
+      italic: spec.italic ?? {},
+      mark: (key, value) => markStyle(spec, key, value)
+    },
+    with: (override) => highlights(merge2(spec, override))
+  };
+}
 function lines(text5) {
   const result = [];
   let current = [];
@@ -22587,14 +22633,23 @@ function richTextOf(context, name) {
   const value = context.slots[name]?.value;
   return value?.kind === "rich-text" ? value.text : void 0;
 }
-function slotText(context, name, fallback) {
-  const words = plain(richTextOf(context, name) ?? []).trim();
-  return words === "" ? fallback : words;
-}
 function slideRichLines(context, name = "lamina") {
   const written = richTextOf(context, name);
   if (written === void 0) return [];
   return lines(written).filter((line) => plain(line).trim() !== "");
+}
+function trimmed(line) {
+  const edge = (inlines, side) => {
+    const index = side === "start" ? 0 : inlines.length - 1;
+    const inline = inlines[index];
+    if (inline === void 0 || inline.kind === "break") return inlines;
+    const replaced = inline.kind === "text" ? { ...inline, value: side === "start" ? inline.value.trimStart() : inline.value.trimEnd() } : { ...inline, children: edge(inline.children, side) };
+    const copy = [...inlines];
+    if (replaced.kind === "text" && replaced.value === "") copy.splice(index, 1);
+    else copy[index] = replaced;
+    return copy;
+  };
+  return edge(edge(line, "start"), "end");
 }
 var RULE_PARAMETERS = {
   thickness: { kind: "length", default: 1, min: 0, description: "The line's thickness, in px." },
@@ -23207,8 +23262,21 @@ var COLOR_DEFAULTS = {
   paper: "#ffffff",
   /** "News da semana" in large. */
   "title-ink": "#4d02a1",
-  /** A news item's label, what comes before its first `:`, and its `**highlighted**` words. */
+  /** A news item's label, what comes before its first `:`. */
   "label-ink": "#460292",
+  /**
+   * The highlights, named in the brief writer's language because a brief's frontmatter sets them
+   * (Tyto ADR 0226): `destaque: '#e30613'`. `**…**` is Bold in `destaque`, in the news and in the
+   * subtitle; its default is the label's colour, so a brief that sets nothing draws as before.
+   */
+  destaque: "#460292",
+  /**
+   * A second and a third highlight, painted only where a `{cor:…}` mark in the subtitle names
+   * them. A declared colour needs a constant default, so theirs is `destaque`'s, and a brief that
+   * marks them sets them.
+   */
+  "destaque-2": "#460292",
+  "destaque-3": "#460292",
   /** A news item's other words. */
   "body-ink": "#646464",
   /** The line under the title. */
@@ -23267,6 +23335,7 @@ var build = (context) => {
   const ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
   const page = sealed(context.size, sealOf(context));
   const lift = context.size.h - page.size.h;
+  const marks = highlightsOf(ink);
   const style2 = (weight, color2, size) => ({
     font: FACE2,
     size,
@@ -23302,16 +23371,13 @@ var build = (context) => {
       byCapitals(
         SUBTITLE_PLACE,
         capText(
-          plainRuns(
-            slotText(context, "subtitulo", DEFAULT_SUBTITLE),
-            style2(BOLD3, "subtitle-ink", SUBTITLE_TYPE.size)
-          ),
+          subtitle(context, style2(BOLD3, "subtitle-ink", SUBTITLE_TYPE.size), marks.header),
           { width: SUBTITLE_PLACE.width, height: Infinity },
           SUBTITLE_TYPE,
           { name: "subtitulo" }
         )
       ),
-      news(context, ink, lift),
+      news(context, ink, marks.news, lift),
       at(
         LOGO.x,
         LOGO.y,
@@ -23360,22 +23426,31 @@ var build = (context) => {
     ]
   });
 };
+var COLOR_MARK = "cor";
+var HIGHLIGHT_NAMES = ["destaque", "destaque-2", "destaque-3"];
+function highlightsOf(ink) {
+  const news2 = highlights({ bold: { color: ink("destaque") } });
+  const values = Object.fromEntries(HIGHLIGHT_NAMES.map((name) => [name, { color: ink(name) }]));
+  return { news: news2, header: news2.with({ marks: { [COLOR_MARK]: { like: "plain", values } } }) };
+}
+function subtitle(context, style2, marks) {
+  const written = richTextOf(context, "subtitulo");
+  const drawn = written === void 0 || plain(written).trim() === "" ? void 0 : atLeastOne(runsOf(trimmed(written), style2, marks.options));
+  return drawn ?? plainRuns(DEFAULT_SUBTITLE, style2);
+}
 function byCapitals(place, words) {
   return at(place.x, place.capTop - anchorOf(words).capTop, words);
 }
-function news(context, ink, lift) {
+function news(context, ink, marks, lift) {
   const written = slideRichLines(context);
   const body = { font: FACE2, size: NEWS.size, weight: LIGHT, color: ink("body-ink") };
+  const labelStyle = { ...body, weight: BOLD3, color: ink("label-ink") };
   const runs = written.flatMap((line, index) => {
     const { label, text: words } = labelOf(keepTogether(line));
     return [
       ...index > 0 ? [lineBreak()] : [],
-      ...[
-        ...label === void 0 ? [] : runsOf(label, { ...body, weight: BOLD3 }, { bold: BOLD3 }),
-        ...runsOf(words, body, { bold: BOLD3 })
-      ].map(
-        (item) => item.kind === "text" && item.weight === BOLD3 ? { ...item, color: solid(ink("label-ink")) } : item
-      )
+      ...label === void 0 ? [] : runsOf(label, labelStyle, marks.options),
+      ...runsOf(words, body, marks.options)
     ];
   });
   const drawn = atLeastOne(runs) ?? plainRuns("", { font: FACE2, size: NEWS.size, weight: REGULAR, color: "#000000" });

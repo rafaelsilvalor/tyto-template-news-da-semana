@@ -30,8 +30,15 @@ values:
   paper: { type: color, default: '#ffffff' }
   # "News da semana" in large.
   title-ink: { type: color, default: '#4d02a1' }
-  # A news item's label, and its highlighted words.
+  # A news item's label, what comes before its first `:`.
   label-ink: { type: color, default: '#460292' }
+  # The highlight: `**…**` in the news and in the subtitle, Bold in this colour. Set it in the
+  # brief's frontmatter: `destaque: '#e30613'`. Its default is the label's colour.
+  destaque: { type: color, default: '#460292' }
+  # A second and a third highlight, reached only by a colour mark in the subtitle:
+  # `{cor:destaque-2}semana{/}`. Their default is `destaque`'s, so set the one you mark.
+  destaque-2: { type: color, default: '#460292' }
+  destaque-3: { type: color, default: '#460292' }
   # A news item's other words.
   body-ink: { type: color, default: '#646464' }
   # The line under the title.

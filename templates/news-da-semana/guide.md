@@ -41,7 +41,38 @@ link do not count. When an item's text has a colon, write it **on the label's li
 (`Tribunal Beta: prova: 10/12`): only the first colon makes the label.
 
 `**…**` is the highlight, for something out of the ordinary in the middle of a text: it comes
-out in bold in the accent. The old form `**Label:**` still works; do not use it in a new brief.
+out in bold in the highlight colour, `destaque`. The old form `**Label:**` still works; do not
+use it in a new brief.
+
+## Highlights
+
+Three colours, set in the frontmatter as hex only when the person asks for another colour:
+
+| Value        | Default   | What it paints                                                            |
+| ------------ | --------- | ------------------------------------------------------------------------- |
+| `destaque`   | `#460292` | `**…**`, in the news and in the subtitle (the label's colour by default). |
+| `destaque-2` | `#460292` | Only words marked `{cor:destaque-2}…{/}` in the subtitle.                 |
+| `destaque-3` | `#460292` | Only words marked `{cor:destaque-3}…{/}` in the subtitle.                 |
+
+The header's line (`subtitulo`) takes both `**…**` and `{cor:destaque}`, `{cor:destaque-2}` or
+`{cor:destaque-3}`; a colour mark changes the colour only, the subtitle stays bold. The news
+take `**…**` alone: a `{cor:…}` mark there changes nothing. A mark the template does not list
+(`{cor:azul}`) leaves its words as they are. The label keeps its own colour whatever
+`destaque` is. There are no flags: no `::lamina {…}` adjustment changes this template.
+
+```brief
+---
+template: news-da-semana
+formats: [grid]
+destaque-2: '#e30613'
+---
+::subtitulo
+  Resumo das notícias da {cor:destaque-2}semana{/}:
+
+::lamina
+  Órgão Alfa:
+  edital publicado com **70 vagas** e inicial de R$ 8,2 mil
+```
 
 `R$ 9,8 mil`, `R$ 16 mil` and `30%` never break in the middle: the template keeps the value
 together. Write them normally, with an ordinary space.

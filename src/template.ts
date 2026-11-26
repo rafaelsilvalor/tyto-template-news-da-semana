@@ -22,21 +22,30 @@ import {
   atLeastOne,
   capText,
   cornerBracket,
+  highlights,
   keepTogether,
   labelOf,
   mark,
   plain,
   plainRuns,
   reportOverflow,
+  richTextOf,
   rule,
   sealed,
   slideRichLines,
-  slotText,
+  trimmed,
 } from '@tyto/template-kit';
 
 import type { RichText, TemplateBuild, TemplateContext } from '@tyto/core';
 import type { NodeDraft } from '@tyto/core/template';
-import type { Block, CapTextParameters, CornerBracketParameters, Mark } from '@tyto/template-kit';
+import type {
+  Block,
+  CapTextParameters,
+  CapTextStyle,
+  CornerBracketParameters,
+  Highlights,
+  Mark,
+} from '@tyto/template-kit';
 
 /* -------------------------------------------------------------------------- the words -- */
 
@@ -63,8 +72,21 @@ export const COLOR_DEFAULTS = {
   paper: '#ffffff',
   /** "News da semana" in large. */
   'title-ink': '#4d02a1',
-  /** A news item's label, what comes before its first `:`, and its `**highlighted**` words. */
+  /** A news item's label, what comes before its first `:`. */
   'label-ink': '#460292',
+  /**
+   * The highlights, named in the brief writer's language because a brief's frontmatter sets them
+   * (Tyto ADR 0226): `destaque: '#e30613'`. `**…**` is Bold in `destaque`, in the news and in the
+   * subtitle; its default is the label's colour, so a brief that sets nothing draws as before.
+   */
+  destaque: '#460292',
+  /**
+   * A second and a third highlight, painted only where a `{cor:…}` mark in the subtitle names
+   * them. A declared colour needs a constant default, so theirs is `destaque`'s, and a brief that
+   * marks them sets them.
+   */
+  'destaque-2': '#460292',
+  'destaque-3': '#460292',
   /** A news item's other words. */
   'body-ink': '#646464',
   /** The line under the title. */
@@ -155,6 +177,7 @@ export const build: TemplateBuild = (context: TemplateContext) => {
   // bottom corner and the list's room rise by its band.
   const page = sealed(context.size, sealOf(context));
   const lift = context.size.h - page.size.h;
+  const marks = highlightsOf(ink);
   const style = (weight: number, color: ColorName, size: number) => ({
     font: FACE,
     size,
@@ -190,16 +213,13 @@ export const build: TemplateBuild = (context: TemplateContext) => {
       byCapitals(
         SUBTITLE_PLACE,
         capText(
-          plainRuns(
-            slotText(context, 'subtitulo', DEFAULT_SUBTITLE),
-            style(BOLD, 'subtitle-ink', SUBTITLE_TYPE.size),
-          ),
+          subtitle(context, style(BOLD, 'subtitle-ink', SUBTITLE_TYPE.size), marks.header),
           { width: SUBTITLE_PLACE.width, height: Infinity },
           SUBTITLE_TYPE,
           { name: 'subtitulo' },
         ),
       ),
-      news(context, ink, lift),
+      news(context, ink, marks.news, lift),
       at(
         LOGO.x,
         LOGO.y,
@@ -251,6 +271,35 @@ export const build: TemplateBuild = (context: TemplateContext) => {
   });
 };
 
+/* ---------------------------------------------------------------------- the highlights -- */
+
+/** The mark family that paints a span of the header: `{cor:destaque-2}…{/}`. */
+const COLOR_MARK = 'cor';
+/** The colours a `{cor:…}` mark may name: the highlights the brief can set in its frontmatter. */
+const HIGHLIGHT_NAMES = ['destaque', 'destaque-2', 'destaque-3'] as const;
+
+/**
+ * What the brief's highlights look like, as anuncio has them (TYTO-554, TYTO-847): `**…**` is
+ * Bold in `destaque` everywhere; the header also takes `{cor:destaque|destaque-2|destaque-3}`,
+ * colour only (`like: 'plain'`), so a brief that sets `destaque-2: '#…'` in its frontmatter has a
+ * second highlight there. A name the template does not declare leaves the words as they are.
+ */
+function highlightsOf(ink: Ink): { readonly news: Highlights; readonly header: Highlights } {
+  const news = highlights({ bold: { color: ink('destaque') } });
+  const values = Object.fromEntries(HIGHLIGHT_NAMES.map((name) => [name, { color: ink(name) }]));
+  return { news, header: news.with({ marks: { [COLOR_MARK]: { like: 'plain', values } } }) };
+}
+
+/** The brief's subtitle with its highlights, or the reference's words when it writes none. */
+function subtitle(context: TemplateContext, style: CapTextStyle, marks: Highlights) {
+  const written = richTextOf(context, 'subtitulo');
+  const drawn =
+    written === undefined || plain(written).trim() === ''
+      ? undefined
+      : atLeastOne(runsOf(trimmed(written), style, marks.options));
+  return drawn ?? plainRuns(DEFAULT_SUBTITLE, style);
+}
+
 /** A text block placed so that its capitals start at `capTop`. */
 function byCapitals(place: { readonly x: number; readonly capTop: number }, words: Block) {
   return at(place.x, place.capTop - anchorOf(words).capTop, words);
@@ -263,25 +312,21 @@ function byCapitals(place: { readonly x: number; readonly capTop: number }, word
  * first `:`, the house convention (TYTO-594) — Bold in the label's colour and the rest Light,
  * centred on the reference's middle and reported when it overruns its room.
  *
- * `**…**` is the house's highlight wherever it is written, Bold in the label's colour as well:
- * so a line written the v0.2.0 way, `**Label:** words`, draws what it drew then. A price never
+ * `**…**` is the house's highlight wherever it is written, Bold in `destaque`, whose default is
+ * the label's colour: so a line written the v0.2.0 way, `**Label:** words`, draws what it drew
+ * then. A `{cor:…}` mark changes nothing here; the header takes it. A price never
  * splits from its sign or its scale word (TYTO-593): "R$ 9,8 mil" keeps one line.
  */
-function news(context: TemplateContext, ink: Ink, lift: number): NodeDraft {
+function news(context: TemplateContext, ink: Ink, marks: Highlights, lift: number): NodeDraft {
   const written = slideRichLines(context);
   const body = { font: FACE, size: NEWS.size, weight: LIGHT, color: ink('body-ink') };
+  const labelStyle = { ...body, weight: BOLD, color: ink('label-ink') };
   const runs = written.flatMap((line, index) => {
     const { label, text: words } = labelOf(keepTogether(line));
     return [
       ...(index > 0 ? [lineBreak()] : []),
-      ...[
-        ...(label === undefined ? [] : runsOf(label, { ...body, weight: BOLD }, { bold: BOLD })),
-        ...runsOf(words, body, { bold: BOLD }),
-      ].map((item) =>
-        item.kind === 'text' && item.weight === BOLD
-          ? { ...item, color: solid(ink('label-ink')) }
-          : item,
-      ),
+      ...(label === undefined ? [] : runsOf(label, labelStyle, marks.options)),
+      ...runsOf(words, body, marks.options),
     ];
   });
   // A slide with no news still draws one empty text, as it always has.

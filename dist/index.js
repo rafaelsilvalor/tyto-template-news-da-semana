@@ -22333,6 +22333,18 @@ function base(options) {
     ...options.mask !== void 0 ? { mask: options.mask } : {}
   };
 }
+function rect(options) {
+  const radius = options.radius ?? 0;
+  return {
+    ...base(options),
+    kind: "rect",
+    size: options.size,
+    radius: typeof radius === "number" ? [radius, radius, radius, radius] : [...radius],
+    ...options.id !== void 0 ? { id: options.id } : {},
+    ...options.fill !== void 0 ? { fill: options.fill } : {},
+    ...options.stroke !== void 0 ? { stroke: options.stroke } : {}
+  };
+}
 function text(options) {
   return {
     ...base(options),
@@ -22461,6 +22473,9 @@ function valueWithin(declared, value) {
   if (typeof value !== "number" || Number.isNaN(value)) return declared.default;
   return Math.min(declared.max ?? Infinity, Math.max(declared.min ?? -Infinity, value));
 }
+function anchorOf(item) {
+  return item.anchor ?? { capTop: 0, baseline: item.height };
+}
 function shifted(draft, dx, dy) {
   const transform2 = {
     ...draft.transform,
@@ -22483,8 +22498,64 @@ function shifted(draft, dx, dy) {
 function block(width, height, draft) {
   return { width, height, draft };
 }
+function sized(draft) {
+  return { width: draft.size.w, height: draft.size.h, draft };
+}
 function at(x, y, item) {
   return shifted(item.draft, x, y);
+}
+var DEFAULT_METRICS = { ascent: 0.75, descent: 0.25, capHeight: 0.709 };
+function capOffset(size, lineHeight, metrics = DEFAULT_METRICS) {
+  const excess = (lineHeight - (metrics.ascent + metrics.descent)) / 2;
+  return size * (excess + (metrics.ascent - metrics.capHeight));
+}
+var CAP_TEXT_PARAMETERS = {
+  size: { kind: "length", default: 32, min: 1, description: "The type size, in px." },
+  lineHeight: {
+    kind: "ratio",
+    default: 1,
+    min: 0.5,
+    description: "From one line to the next, as a multiple of the size."
+  },
+  letterSpacing: {
+    kind: "length",
+    default: 0,
+    description: "Space added between letters, in px."
+  },
+  align: {
+    kind: "choice",
+    default: "left",
+    choices: ["left", "center", "right"],
+    description: "Where each line sits across the block."
+  }
+};
+function capText(runs, area, given = {}, options = {}) {
+  const values = parameterValues(CAP_TEXT_PARAMETERS, given);
+  const metrics = options.metrics ?? DEFAULT_METRICS;
+  const box = Number.isFinite(area.width) ? { box: { w: area.width } } : {};
+  const node2 = text({
+    ...options.text,
+    ...options.name === void 0 ? {} : { name: options.name },
+    runs,
+    ...box,
+    align: values.align,
+    lineHeight: values.lineHeight,
+    letterSpacing: values.letterSpacing
+  });
+  const lines2 = options.lines ?? options.measure?.(node2)?.lines ?? linesWritten(runs);
+  const pitch = values.size * values.lineHeight;
+  const capTop = capOffset(values.size, values.lineHeight, metrics);
+  return {
+    ...block(Number.isFinite(area.width) ? area.width : 0, lines2 * pitch, node2),
+    anchor: { capTop, baseline: capTop + (lines2 - 1) * pitch + values.size * metrics.capHeight }
+  };
+}
+function linesWritten(runs) {
+  return runs.filter((each) => each.kind === "break").length + 1;
+}
+function plainRuns(words, style2) {
+  const [first = "", ...others] = words.split("\n");
+  return [run(first, style2), ...others.flatMap((line) => [lineBreak(), run(line, style2)])];
 }
 function lines(text5) {
   const result = [];
@@ -22511,6 +22582,117 @@ function plain(text5) {
         return plain(inline.children);
     }
   }).join("");
+}
+function richTextOf(context, name) {
+  const value = context.slots[name]?.value;
+  return value?.kind === "rich-text" ? value.text : void 0;
+}
+function slotText(context, name, fallback) {
+  const words = plain(richTextOf(context, name) ?? []).trim();
+  return words === "" ? fallback : words;
+}
+function slideRichLines(context, name = "lamina") {
+  const written = richTextOf(context, name);
+  if (written === void 0) return [];
+  return lines(written).filter((line) => plain(line).trim() !== "");
+}
+var RULE_PARAMETERS = {
+  thickness: { kind: "length", default: 1, min: 0, description: "The line's thickness, in px." },
+  direction: {
+    kind: "choice",
+    default: "horizontal",
+    choices: ["horizontal", "vertical", "diagonal-down", "diagonal-up"],
+    description: "Across, down, or at 45\xB0 falling or rising to the right."
+  }
+};
+function rule(length, paint, given = {}, options = {}) {
+  const values = parameterValues(RULE_PARAMETERS, given);
+  const name = options.name === void 0 ? {} : { name: options.name };
+  if (values.direction === "horizontal" || values.direction === "vertical") {
+    const across = values.direction === "horizontal";
+    return sized(
+      rect({
+        ...name,
+        size: across ? { w: length, h: values.thickness } : { w: values.thickness, h: length },
+        fill: paint
+      })
+    );
+  }
+  const d = values.direction === "diagonal-down" ? `M0 0L${length} ${length}` : `M0 ${length}L${length} 0`;
+  return sized(
+    vector({
+      ...name,
+      geometry: { kind: "path", d, fillRule: "nonzero" },
+      size: { w: length, h: length },
+      stroke: { paint, width: values.thickness, align: "center" }
+    })
+  );
+}
+var CORNER_BRACKET_PARAMETERS = {
+  thickness: { kind: "length", default: 4, min: 0, description: "The bracket's arms, in px." },
+  corner: {
+    kind: "choice",
+    default: "top-left",
+    choices: ["top-left", "top-right", "bottom-right", "bottom-left"],
+    description: "Which corner of its square the bracket draws."
+  }
+};
+function cornerBracketPath(s, t, corner) {
+  switch (corner) {
+    case "top-left":
+      return `M0 0H${s}V${t}H${t}V${s}H0Z`;
+    case "top-right":
+      return `M0 0H${s}V${s}H${s - t}V${t}H0Z`;
+    case "bottom-right":
+      return `M${s - t} 0H${s}V${s}H0V${s - t}H${s - t}Z`;
+    case "bottom-left":
+      return `M0 0H${t}V${s - t}H${s}V${s}H0Z`;
+  }
+}
+function cornerBracket(size, paint, given = {}, options = {}) {
+  const values = parameterValues(CORNER_BRACKET_PARAMETERS, given);
+  return sized(
+    vector({
+      ...options.name === void 0 ? {} : { name: options.name },
+      geometry: {
+        kind: "path",
+        d: cornerBracketPath(size, values.thickness, values.corner),
+        fillRule: "nonzero"
+      },
+      size: { w: size, h: size },
+      fill: paint
+    })
+  );
+}
+var ARROW_SHAPE_PARAMETERS = {
+  shaft: { kind: "length", default: 9, min: 0, description: "The shaft's thickness, in px." },
+  headRatio: {
+    kind: "ratio",
+    default: 0.64,
+    min: 0,
+    description: "The head's length as a share of the arrow's height, rounded to a whole px."
+  }
+};
+function arrowPath(size, shaft, headRatio) {
+  const head = Math.round(size.h * headRatio);
+  const top = (size.h - shaft) / 2;
+  const neck = size.w - head;
+  return `M0 ${top}H${neck}V0L${size.w} ${size.h / 2}L${neck} ${size.h}V${top + shaft}H0Z`;
+}
+function arrowShape(size, paint, given = {}, options = {}) {
+  const values = parameterValues(ARROW_SHAPE_PARAMETERS, given);
+  return sized(
+    vector({
+      ...options.name === void 0 ? {} : { name: options.name },
+      geometry: {
+        kind: "path",
+        d: arrowPath(size, values.shaft, values.headRatio),
+        fillRule: "nonzero"
+      },
+      size,
+      fill: paint
+    })
+  );
 }
 var NO_BREAK_SPACE = "\xA0";
 var NUMBER = String.raw`\d[\d.,]*`;
@@ -22565,8 +22747,8 @@ var KEEP_TOGETHER_RULES = [
     after: String.raw`(?:${UNITS.join("|")})(?!\p{L})`
   }
 ];
-function keepTogetherText(text5, rules2 = KEEP_TOGETHER_RULES) {
-  return rules2.reduce(
+function keepTogetherText(text5, rules = KEEP_TOGETHER_RULES) {
+  return rules.reduce(
     (glued, rule2) => glued.replace(
       new RegExp(`(?<=${rule2.before})( +)(?=${rule2.after})`, "gu"),
       (spaces) => NO_BREAK_SPACE.repeat(spaces.length)
@@ -22574,8 +22756,8 @@ function keepTogetherText(text5, rules2 = KEEP_TOGETHER_RULES) {
     text5
   );
 }
-function keepTogether(value, rules2 = KEEP_TOGETHER_RULES) {
-  const glued = keepTogetherText(flatten(value), rules2);
+function keepTogether(value, rules = KEEP_TOGETHER_RULES) {
+  const glued = keepTogetherText(flatten(value), rules);
   let offset = 0;
   const rewrite = (inlines) => inlines.map((inline) => {
     switch (inline.kind) {
@@ -22716,6 +22898,10 @@ function markIn(shape2, area, fill, given = {}, options = {}) {
     ),
     overflow: Number.isFinite(area.width) ? Math.max(0, width - area.width) : 0
   };
+}
+function atLeastOne(runs) {
+  const [first, ...rest] = runs;
+  return first === void 0 ? void 0 : [first, ...rest];
 }
 var TEXT_PARAMETERS = {
   lineHeight: {
@@ -23041,12 +23227,6 @@ var FACE2 = { family: "CircularXX", source: "system" };
 var LIGHT = 300;
 var REGULAR = 400;
 var BOLD3 = 700;
-var ASCENT = 0.75;
-var DESCENT = 0.25;
-var CAP_HEIGHT = 0.709;
-function capOffset(size, lineHeight) {
-  return size * ((lineHeight - (ASCENT + DESCENT)) / 2 + (ASCENT - CAP_HEIGHT));
-}
 var SLIDE_WIDTH = 1080;
 var ESTIMATED_ADVANCE = 0.5;
 var NEWS = {
@@ -23061,175 +23241,162 @@ var NEWS = {
   top: 160,
   bottom: 1190
 };
+var OVERLINE_TYPE = { size: 12.7, align: "center", letterSpacing: 25.7 };
+var OVERLINE_PLACE = { x: 0, capTop: 87, width: SLIDE_WIDTH };
+var TITLE_TYPE = { size: 70.3 };
+var SUBTITLE_TYPE = { size: 30, lineHeight: 36.5 / 30 };
+var SUBTITLE_PLACE = { x: 115, capTop: 899, width: 300 };
+var LOGO = { x: 113, y: 353, height: 88 };
+var DIAGONALS = [
+  { name: "diagonal-logo", x: 44, y: 445, length: 54 },
+  { name: "diagonal-titulo", x: 354, y: 765, length: 60 }
+];
+var CORNERS = [
+  { name: "canto-superior", x: 112, y: 135, corner: "top-left", lifts: false },
+  { name: "canto-inferior", x: 955, y: 1201, corner: "bottom-right", lifts: true }
+];
+var CORNER_SIZE = 14;
+var SQUARES = {
+  box: { w: 19, h: 20 },
+  d: "M10 0H19V10H11V20H0V9H10Z M1 10V19H9V10Z",
+  fillRule: "evenodd"
+};
+var SQUARES_PLACE = { x: 112, y: 813 };
+var ARROW = { x: 894, y: 1258, w: 106, h: 35 };
 var build = (context) => {
   const ink = (name) => colorValue(context, name, COLOR_DEFAULTS[name]);
   const page = sealed(context.size, sealOf(context));
   const lift = context.size.h - page.size.h;
+  const style2 = (weight, color2, size) => ({
+    font: FACE2,
+    size,
+    weight,
+    color: ink(color2)
+  });
   return frame({
     format: context.format,
     size: context.size,
     idPrefix: context.idPrefix,
     background: solid(ink("paper")),
     children: [
-      textAt("sobretitulo", OVERLINE, {
-        x: 0,
-        capTop: 87,
-        size: 12.7,
-        weight: REGULAR,
-        color: ink("overline-ink"),
-        width: SLIDE_WIDTH,
-        align: "center",
-        letterSpacing: 25.7
-      }),
-      ...TITLE3.map(
-        (line) => textAt("titulo", line.words, {
-          x: line.x,
-          capTop: line.capTop,
-          size: 70.3,
-          weight: BOLD3,
-          color: ink("title-ink")
-        })
+      byCapitals(
+        OVERLINE_PLACE,
+        capText(
+          plainRuns(OVERLINE, style2(REGULAR, "overline-ink", OVERLINE_TYPE.size)),
+          { width: OVERLINE_PLACE.width, height: Infinity },
+          OVERLINE_TYPE,
+          { name: "sobretitulo" }
+        )
       ),
-      textAt("subtitulo", slotText(context, "subtitulo", DEFAULT_SUBTITLE), {
-        x: 115,
-        capTop: 899,
-        size: 30,
-        weight: BOLD3,
-        color: ink("subtitle-ink"),
-        lineHeight: 36.5 / 30,
-        width: 300
-      }),
+      ...TITLE3.map(
+        (line) => byCapitals(
+          line,
+          capText(
+            plainRuns(line.words, style2(BOLD3, "title-ink", TITLE_TYPE.size)),
+            { width: Infinity, height: Infinity },
+            TITLE_TYPE,
+            { name: "titulo" }
+          )
+        )
+      ),
+      byCapitals(
+        SUBTITLE_PLACE,
+        capText(
+          plainRuns(
+            slotText(context, "subtitulo", DEFAULT_SUBTITLE),
+            style2(BOLD3, "subtitle-ink", SUBTITLE_TYPE.size)
+          ),
+          { width: SUBTITLE_PLACE.width, height: Infinity },
+          SUBTITLE_TYPE,
+          { name: "subtitulo" }
+        )
+      ),
       news(context, ink, lift),
       at(
-        113,
-        353,
-        drawLogo(context.brand, 88, { primary: ink("logo"), secondary: ink("logo-shade") })
+        LOGO.x,
+        LOGO.y,
+        drawLogo(context.brand, LOGO.height, {
+          primary: ink("logo"),
+          secondary: ink("logo-shade")
+        })
       ),
-      ...rules(ink("rule-ink")),
-      ...corners(ink("corner-ink"), lift),
-      squares(ink("subtitle-ink")),
-      ...context.artwork.index === context.artwork.count - 1 ? [] : [arrow(ink("title-ink"))],
+      ...DIAGONALS.map(
+        (diagonal) => at(
+          diagonal.x,
+          diagonal.y,
+          rule(
+            diagonal.length,
+            solid(ink("rule-ink")),
+            { direction: "diagonal-down", thickness: 1 },
+            { name: diagonal.name }
+          )
+        )
+      ),
+      ...CORNERS.map(
+        (corner) => at(
+          corner.x,
+          corner.y - (corner.lifts ? lift : 0),
+          cornerBracket(
+            CORNER_SIZE,
+            solid(ink("corner-ink")),
+            { corner: corner.corner },
+            { name: corner.name }
+          )
+        )
+      ),
+      at(
+        SQUARES_PLACE.x,
+        SQUARES_PLACE.y,
+        mark(SQUARES, SQUARES.box.h, ink("subtitle-ink"), "quadrados")
+      ),
+      ...context.artwork.index === context.artwork.count - 1 ? [] : [
+        at(
+          ARROW.x,
+          ARROW.y,
+          arrowShape({ w: ARROW.w, h: ARROW.h }, solid(ink("title-ink")), {}, { name: "seta" })
+        )
+      ],
       ...page.seal
     ]
   });
 };
-function rules(color2) {
-  const diagonal = (name, x, y, length) => vector({
-    name,
-    geometry: { kind: "path", d: `M0 0L${length} ${length}`, fillRule: "nonzero" },
-    size: { w: length, h: length },
-    stroke: { paint: solid(color2), width: 1, align: "center" },
-    transform: { x, y }
-  });
-  return [diagonal("diagonal-logo", 44, 445, 54), diagonal("diagonal-titulo", 354, 765, 60)];
-}
-function corners(color2, lift) {
-  const corner = (name, x, y, d) => vector({
-    name,
-    geometry: { kind: "path", d, fillRule: "nonzero" },
-    size: { w: 14, h: 14 },
-    fill: solid(color2),
-    transform: { x, y }
-  });
-  return [
-    corner("canto-superior", 112, 135, "M0 0H14V4H4V14H0Z"),
-    corner("canto-inferior", 955, 1201 - lift, "M10 0H14V14H0V10H10Z")
-  ];
-}
-function squares(color2) {
-  return vector({
-    name: "quadrados",
-    geometry: {
-      kind: "path",
-      d: "M10 0H19V10H11V20H0V9H10Z M1 10V19H9V10Z",
-      fillRule: "evenodd"
-    },
-    size: { w: 19, h: 20 },
-    fill: solid(color2),
-    transform: { x: 112, y: 813 }
-  });
-}
-function arrow(color2) {
-  const box = { x: 894, y: 1258, w: 106, h: 35, shaft: 9 };
-  const head = Math.round(box.h * 0.64);
-  const top = (box.h - box.shaft) / 2;
-  const neck = box.w - head;
-  const d = `M0 ${top}H${neck}V0L${box.w} ${box.h / 2}L${neck} ${box.h}V${top + box.shaft}H0Z`;
-  return vector({
-    name: "seta",
-    geometry: { kind: "path", d, fillRule: "nonzero" },
-    size: { w: box.w, h: box.h },
-    fill: solid(color2),
-    transform: { x: box.x, y: box.y }
-  });
+function byCapitals(place, words) {
+  return at(place.x, place.capTop - anchorOf(words).capTop, words);
 }
 function news(context, ink, lift) {
   const written = slideRichLines(context);
   const body = { font: FACE2, size: NEWS.size, weight: LIGHT, color: ink("body-ink") };
   const runs = written.flatMap((line, index) => {
-    const { label, text: text2 } = labelOf(keepTogether(line));
+    const { label, text: words } = labelOf(keepTogether(line));
     return [
       ...index > 0 ? [lineBreak()] : [],
       ...[
         ...label === void 0 ? [] : runsOf(label, { ...body, weight: BOLD3 }, { bold: BOLD3 }),
-        ...runsOf(text2, body, { bold: BOLD3 })
+        ...runsOf(words, body, { bold: BOLD3 })
       ].map(
         (item) => item.kind === "text" && item.weight === BOLD3 ? { ...item, color: solid(ink("label-ink")) } : item
       )
     ];
   });
-  const box = { x: NEWS.x, size: NEWS.size, lineHeight: NEWS.lineHeight, width: NEWS.width };
-  const draft = textRuns("noticias", runs, { ...box, capTop: 0 });
-  const count = lineCount(context, draft, written, NEWS.size, NEWS.width);
-  const pitch = NEWS.size * NEWS.lineHeight;
-  const height = (count - 1) * pitch + NEWS.size * CAP_HEIGHT;
+  const drawn = atLeastOne(runs) ?? plainRuns("", { font: FACE2, size: NEWS.size, weight: REGULAR, color: "#000000" });
+  const type = { size: NEWS.size, lineHeight: NEWS.lineHeight };
+  const area = { width: NEWS.width, height: Infinity };
+  const probe = capText(drawn, area, type, { name: "noticias" }).draft;
+  const measured = probe.kind === "text" ? context.measure(probe)?.lines : void 0;
+  const lines2 = Math.max(1, measured ?? estimatedLines(written));
+  const list = capText(drawn, area, type, { name: "noticias", lines: lines2 });
+  const anchor2 = anchorOf(list);
+  const height = anchor2.baseline - anchor2.capTop;
   const capTop = Math.max(NEWS.top, NEWS.centre - height / 2);
   reportOverflow(context.report, capTop + height, NEWS.bottom - lift);
-  return textRuns("noticias", runs, { ...box, capTop });
+  return at(NEWS.x, capTop - anchor2.capTop, list);
 }
-function textAt(name, words, placed) {
-  const style2 = { font: FACE2, size: placed.size, weight: placed.weight, color: placed.color };
-  const [first = "", ...others] = words.split("\n");
-  return textRuns(
-    name,
-    [run(first, style2), ...others.flatMap((line) => [lineBreak(), run(line, style2)])],
-    placed
+function estimatedLines(written) {
+  const perLine = Math.max(1, Math.floor(NEWS.width / (NEWS.size * ESTIMATED_ADVANCE)));
+  return written.reduce(
+    (sum, line) => sum + Math.max(1, Math.ceil([...plain(line)].length / perLine)),
+    0
   );
-}
-function textRuns(name, runs, placed) {
-  const lineHeight = placed.lineHeight ?? 1;
-  const [head, ...tail] = runs;
-  const empty = run("", { font: FACE2, size: placed.size, weight: REGULAR, color: "#000000" });
-  return text({
-    name,
-    runs: [head ?? empty, ...tail],
-    ...placed.width === void 0 ? {} : { box: { w: placed.width } },
-    align: placed.align ?? "left",
-    lineHeight,
-    letterSpacing: placed.letterSpacing ?? 0,
-    transform: { x: placed.x, y: placed.capTop - capOffset(placed.size, lineHeight) }
-  });
-}
-function lineCount(context, node2, written, size, width) {
-  const measured = node2.kind === "text" ? context.measure(node2) : void 0;
-  if (measured !== void 0) return Math.max(1, measured.lines);
-  const perLine = Math.max(1, Math.floor(width / (size * ESTIMATED_ADVANCE)));
-  const count = written.reduce((sum, line) => {
-    const characters = [...plain(line)].length;
-    return sum + Math.max(1, Math.ceil(characters / perLine));
-  }, 0);
-  return Math.max(1, count);
-}
-function slideRichLines(context) {
-  const value = context.slots["lamina"]?.value;
-  if (value?.kind !== "rich-text") return [];
-  return lines(value.text).filter((line) => plain(line).trim() !== "");
-}
-function slotText(context, name, fallback) {
-  const value = context.slots[name]?.value;
-  if (value?.kind !== "rich-text") return fallback;
-  const words = plain(value.text).trim();
-  return words === "" ? fallback : words;
 }
 
 // src/index.ts

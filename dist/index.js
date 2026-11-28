@@ -22420,7 +22420,7 @@ function frame(options) {
   };
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-3KKHXN6D.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-3KKHXN6D.js
 var PAPER = "#fbfbfb";
 var INK = "#000000";
 var ZEBRA = "#f2f2f4";
@@ -22457,7 +22457,7 @@ var BODY = {
 };
 var OPTICAL_DROP = 0.15;
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.27.1/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-template-kit@0.28.0/node_modules/@rafaelsilvalor/tyto-template-kit/dist/index.js
 function parameterValues(schema, given = {}) {
   const values = {};
   for (const [name, declared] of Object.entries(schema)) {
@@ -22529,10 +22529,10 @@ var CAP_TEXT_PARAMETERS = {
     description: "Where each line sits across the block."
   }
 };
-function capText(runs, area, given = {}, options = {}) {
+function capText(runs, area2, given = {}, options = {}) {
   const values = parameterValues(CAP_TEXT_PARAMETERS, given);
   const metrics = options.metrics ?? DEFAULT_METRICS;
-  const box = Number.isFinite(area.width) ? { box: { w: area.width } } : {};
+  const box = Number.isFinite(area2.width) ? { box: { w: area2.width } } : {};
   const node2 = text({
     ...options.text,
     ...options.name === void 0 ? {} : { name: options.name },
@@ -22546,7 +22546,7 @@ function capText(runs, area, given = {}, options = {}) {
   const pitch = values.size * values.lineHeight;
   const capTop = capOffset(values.size, values.lineHeight, metrics);
   return {
-    ...block(Number.isFinite(area.width) ? area.width : 0, lines2 * pitch, node2),
+    ...block(Number.isFinite(area2.width) ? area2.width : 0, lines2 * pitch, node2),
     anchor: { capTop, baseline: capTop + (lines2 - 1) * pitch + values.size * metrics.capHeight }
   };
 }
@@ -22934,9 +22934,9 @@ var MARK_PARAMETERS = {
     description: "The mark's height, in px; absent, the area's height when it has one."
   }
 };
-function markIn(shape2, area, fill, given = {}, options = {}) {
+function markIn(shape2, area2, fill, given = {}, options = {}) {
   const values = parameterValues(MARK_PARAMETERS, given);
-  const height = given.height !== void 0 || !Number.isFinite(area.height) ? values.height : area.height;
+  const height = given.height !== void 0 || !Number.isFinite(area2.height) ? values.height : area2.height;
   const scale = height / shape2.box.h;
   const width = shape2.box.w * scale;
   return {
@@ -22951,7 +22951,7 @@ function markIn(shape2, area, fill, given = {}, options = {}) {
         transform: { scaleX: scale, scaleY: scale }
       })
     ),
-    overflow: Number.isFinite(area.width) ? Math.max(0, width - area.width) : 0
+    overflow: Number.isFinite(area2.width) ? Math.max(0, width - area2.width) : 0
   };
 }
 function atLeastOne(runs) {
@@ -23160,7 +23160,7 @@ var FRAMED_PICTURE_PARAMETERS = {
 };
 var NO_FILL = solid({ r: 0, g: 0, b: 0, a: 0 });
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-KTMH3XT2.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/chunk-KTMH3XT2.js
 var PLACEHOLDER_LOGO = {
   box: { w: 186.09, h: 376.79 },
   d: (
@@ -23193,7 +23193,7 @@ function drawLogo(kit, height, inks) {
   return drawBrandMark(kit.logo ?? PLACEHOLDER_LOGO, height, inks, "logo");
 }
 
-// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.4/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
+// node_modules/.pnpm/@rafaelsilvalor+tyto-house-style@0.9.5/node_modules/@rafaelsilvalor/tyto-house-style/dist/index.js
 var TITLE_INK = "#7c7c7c";
 var ROW_INK = "#393939";
 var FACE = systemFont("CircularXX");
